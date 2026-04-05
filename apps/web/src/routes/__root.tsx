@@ -209,6 +209,7 @@ function ServerStateBootstrap() {
 
 function EventRouter() {
   const applyOrchestrationEvents = useStore((store) => store.applyOrchestrationEvents);
+  const setActiveEnvironmentId = useStore((store) => store.setActiveEnvironmentId);
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const syncProjects = useUiStateStore((store) => store.syncProjects);
@@ -226,15 +227,24 @@ function EventRouter() {
   const handledBootstrapThreadIdRef = useRef<string | null>(null);
   const seenServerConfigUpdateIdRef = useRef(getServerConfigUpdatedNotification()?.id ?? 0);
   const disposedRef = useRef(false);
-  const bootstrapFromSnapshotRef = useRef<() => Promise<void>>(async () => undefined);
+  const bootstrapFromSnapshotRef = useRef<
+    (
+      environmentId?: ServerLifecycleWelcomePayload["environment"]["environmentId"] | null,
+    ) => Promise<void>
+  >(async () => undefined);
   const serverConfig = useServerConfig();
+  const resolveCurrentEnvironmentId = useEffectEvent(
+    () =>
+      serverConfig?.environment.environmentId ?? useStore.getState().activeEnvironmentId ?? null,
+  );
 
   const handleWelcome = useEffectEvent((payload: ServerLifecycleWelcomePayload | null) => {
     if (!payload) return;
 
+    setActiveEnvironmentId(payload.environment.environmentId);
     migrateLocalSettingsToServer();
     void (async () => {
-      await bootstrapFromSnapshotRef.current();
+      await bootstrapFromSnapshotRef.current(payload.environment.environmentId);
       if (disposedRef.current) {
         return;
       }
@@ -317,6 +327,13 @@ function EventRouter() {
   );
 
   useEffect(() => {
+    if (!serverConfig) {
+      return;
+    }
+    setActiveEnvironmentId(serverConfig.environment.environmentId);
+  }, [serverConfig, setActiveEnvironmentId]);
+
+  useEffect(() => {
     const api = readNativeApi();
     if (!api) return;
     let disposed = false;
@@ -390,7 +407,7 @@ function EventRouter() {
         void queryInvalidationThrottler.maybeExecute();
       }
 
-      applyOrchestrationEvents(uiEvents);
+      applyOrchestrationEvents(uiEvents, resolveCurrentEnvironmentId());
       if (needsProjectUiSync) {
         const projects = useStore.getState().projects;
         syncProjects(projects.map((project) => ({ id: project.id, cwd: project.cwd })));
@@ -488,7 +505,10 @@ function EventRouter() {
       }
     };
 
-    const runSnapshotRecovery = async (reason: "bootstrap" | "replay-failed"): Promise<void> => {
+    const runSnapshotRecovery = async (
+      reason: "bootstrap" | "replay-failed",
+      environmentId?: ServerLifecycleWelcomePayload["environment"]["environmentId"] | null,
+    ): Promise<void> => {
       const started = recovery.beginSnapshotRecovery(reason);
       if (import.meta.env.MODE !== "test") {
         const state = recovery.getState();
@@ -511,7 +531,7 @@ function EventRouter() {
       try {
         const snapshot = await api.orchestration.getSnapshot();
         if (!disposed) {
-          syncServerReadModel(snapshot);
+          syncServerReadModel(snapshot, environmentId ?? resolveCurrentEnvironmentId());
           reconcileSnapshotDerivedState();
           if (recovery.completeSnapshotRecovery(snapshot.snapshotSequence)) {
             void runReplayRecovery("sequence-gap");
@@ -523,8 +543,10 @@ function EventRouter() {
       }
     };
 
-    const bootstrapFromSnapshot = async (): Promise<void> => {
-      await runSnapshotRecovery("bootstrap");
+    const bootstrapFromSnapshot = async (
+      environmentId?: ServerLifecycleWelcomePayload["environment"]["environmentId"] | null,
+    ): Promise<void> => {
+      await runSnapshotRecovery("bootstrap", environmentId);
     };
     bootstrapFromSnapshotRef.current = bootstrapFromSnapshot;
 
@@ -555,7 +577,14 @@ function EventRouter() {
       },
     );
     const unsubTerminalEvent = api.terminal.onEvent((event) => {
-      const thread = useStore.getState().threads.find((entry) => entry.id === event.threadId);
+      const currentEnvironmentId = resolveCurrentEnvironmentId();
+      const thread = useStore
+        .getState()
+        .threads.find(
+          (entry) =>
+            entry.id === event.threadId &&
+            (entry.environmentId ?? null) === (currentEnvironmentId ?? null),
+        );
       if (thread && thread.archivedAt !== null) {
         return;
       }
@@ -580,6 +609,7 @@ function EventRouter() {
     applyTerminalEvent,
     clearThreadUi,
     setProjectExpanded,
+    setActiveEnvironmentId,
     syncProjects,
     syncServerReadModel,
     syncThreads,

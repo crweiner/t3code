@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { Effect, Stream } from "effect";
 
+import { resolvePrimaryEnvironmentBootstrapUrl } from "./environmentBootstrap";
 import { type WsRpcProtocolClient } from "./rpc/protocol";
 import { resetWsReconnectBackoff } from "./rpc/wsConnectionState";
 import { WsTransport } from "./wsTransport";
@@ -116,7 +117,9 @@ export async function __resetWsRpcClientForTests() {
   sharedWsRpcClient = null;
 }
 
-export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
+export function createWsRpcClient(
+  transport = new WsTransport(resolvePrimaryEnvironmentBootstrapUrl()),
+): WsRpcClient {
   return {
     dispose: () => transport.dispose(),
     reconnect: async () => {

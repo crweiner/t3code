@@ -1,4 +1,5 @@
 import {
+  type EnvironmentId,
   type OrchestrationEvent,
   type OrchestrationMessage,
   type OrchestrationProposedPlan,
@@ -25,18 +26,20 @@ import { type ChatMessage, type Project, type SidebarThreadSummary, type Thread 
 // ── State ────────────────────────────────────────────────────────────
 
 export interface AppState {
+  activeEnvironmentId?: EnvironmentId | null;
   projects: Project[];
   threads: Thread[];
-  sidebarThreadsById: Record<string, SidebarThreadSummary>;
-  threadIdsByProjectId: Record<string, ThreadId[]>;
+  sidebarThreadsByScopedId: Record<string, SidebarThreadSummary>;
+  threadScopedIdsByProjectScopedId: Record<string, string[]>;
   bootstrapComplete: boolean;
 }
 
 const initialState: AppState = {
+  activeEnvironmentId: null,
   projects: [],
   threads: [],
-  sidebarThreadsById: {},
-  threadIdsByProjectId: {},
+  sidebarThreadsByScopedId: {},
+  threadScopedIdsByProjectScopedId: {},
   bootstrapComplete: false,
 };
 const MAX_THREAD_MESSAGES = 2_000;
@@ -44,17 +47,48 @@ const MAX_THREAD_CHECKPOINTS = 500;
 const MAX_THREAD_PROPOSED_PLANS = 200;
 const MAX_THREAD_ACTIVITIES = 500;
 const EMPTY_THREAD_IDS: ThreadId[] = [];
+const EMPTY_SCOPED_IDS: string[] = [];
+
+function sameEnvironmentId(
+  left: EnvironmentId | null | undefined,
+  right: EnvironmentId | null | undefined,
+): boolean {
+  return (left ?? null) === (right ?? null);
+}
+
+function scopedEntityId(
+  environmentId: EnvironmentId | null | undefined,
+  localId: string,
+  kind: "project" | "thread",
+): string {
+  return `${environmentId ?? "environment:unknown"}:${kind}:${localId}`;
+}
+
+export function getProjectScopedId(input: {
+  readonly environmentId: EnvironmentId | null | undefined;
+  readonly id: ProjectId;
+}): string {
+  return scopedEntityId(input.environmentId, input.id, "project");
+}
+
+export function getThreadScopedId(input: {
+  readonly environmentId: EnvironmentId | null | undefined;
+  readonly id: ThreadId;
+}): string {
+  return scopedEntityId(input.environmentId, input.id, "thread");
+}
 
 // ── Pure helpers ──────────────────────────────────────────────────────
 
 function updateThread(
   threads: Thread[],
+  environmentId: EnvironmentId | null | undefined,
   threadId: ThreadId,
   updater: (t: Thread) => Thread,
 ): Thread[] {
   let changed = false;
   const next = threads.map((t) => {
-    if (t.id !== threadId) return t;
+    if (t.id !== threadId || !sameEnvironmentId(t.environmentId, environmentId)) return t;
     const updated = updater(t);
     if (updated !== t) changed = true;
     return updated;
@@ -64,12 +98,13 @@ function updateThread(
 
 function updateProject(
   projects: Project[],
+  environmentId: EnvironmentId | null | undefined,
   projectId: Project["id"],
   updater: (project: Project) => Project,
 ): Project[] {
   let changed = false;
   const next = projects.map((project) => {
-    if (project.id !== projectId) {
+    if (project.id !== projectId || !sameEnvironmentId(project.environmentId, environmentId)) {
       return project;
     }
     const updated = updater(project);
@@ -154,9 +189,10 @@ function mapTurnDiffSummary(
   };
 }
 
-function mapThread(thread: OrchestrationThread): Thread {
+function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId | null): Thread {
   return {
     id: thread.id,
+    environmentId,
     codexThreadId: null,
     projectId: thread.projectId,
     title: thread.title,
@@ -179,11 +215,16 @@ function mapThread(thread: OrchestrationThread): Thread {
   };
 }
 
-function mapProject(project: OrchestrationReadModel["projects"][number]): Project {
+function mapProject(
+  project: OrchestrationReadModel["projects"][number],
+  environmentId: EnvironmentId | null,
+): Project {
   return {
     id: project.id,
+    environmentId,
     name: project.title,
     cwd: project.workspaceRoot,
+    repositoryIdentity: project.repositoryIdentity ?? null,
     defaultModelSelection: project.defaultModelSelection
       ? normalizeModelSelection(project.defaultModelSelection)
       : null,
@@ -213,6 +254,7 @@ function getLatestUserMessageAt(
 function buildSidebarThreadSummary(thread: Thread): SidebarThreadSummary {
   return {
     id: thread.id,
+    environmentId: thread.environmentId ?? null,
     projectId: thread.projectId,
     title: thread.title,
     interactionMode: thread.interactionMode,
@@ -239,6 +281,7 @@ function sidebarThreadSummariesEqual(
   return (
     left !== undefined &&
     left.id === right.id &&
+    sameEnvironmentId(left.environmentId, right.environmentId) &&
     left.projectId === right.projectId &&
     left.title === right.title &&
     left.interactionMode === right.interactionMode &&
@@ -256,61 +299,80 @@ function sidebarThreadSummariesEqual(
   );
 }
 
-function appendThreadIdByProjectId(
-  threadIdsByProjectId: Record<string, ThreadId[]>,
-  projectId: ProjectId,
-  threadId: ThreadId,
-): Record<string, ThreadId[]> {
-  const existingThreadIds = threadIdsByProjectId[projectId] ?? EMPTY_THREAD_IDS;
-  if (existingThreadIds.includes(threadId)) {
-    return threadIdsByProjectId;
+function appendThreadScopedIdByProjectScopedId(
+  threadScopedIdsByProjectScopedId: Record<string, string[]>,
+  projectScopedIdValue: string,
+  nextThreadScopedId: string,
+): Record<string, string[]> {
+  const existingThreadScopedIds =
+    threadScopedIdsByProjectScopedId[projectScopedIdValue] ?? EMPTY_SCOPED_IDS;
+  if (existingThreadScopedIds.includes(nextThreadScopedId)) {
+    return threadScopedIdsByProjectScopedId;
   }
   return {
-    ...threadIdsByProjectId,
-    [projectId]: [...existingThreadIds, threadId],
+    ...threadScopedIdsByProjectScopedId,
+    [projectScopedIdValue]: [...existingThreadScopedIds, nextThreadScopedId],
   };
 }
 
-function removeThreadIdByProjectId(
-  threadIdsByProjectId: Record<string, ThreadId[]>,
-  projectId: ProjectId,
-  threadId: ThreadId,
-): Record<string, ThreadId[]> {
-  const existingThreadIds = threadIdsByProjectId[projectId] ?? EMPTY_THREAD_IDS;
-  if (!existingThreadIds.includes(threadId)) {
-    return threadIdsByProjectId;
+function removeThreadScopedIdByProjectScopedId(
+  threadScopedIdsByProjectScopedId: Record<string, string[]>,
+  projectScopedIdValue: string,
+  threadScopedIdValue: string,
+): Record<string, string[]> {
+  const existingThreadScopedIds =
+    threadScopedIdsByProjectScopedId[projectScopedIdValue] ?? EMPTY_SCOPED_IDS;
+  if (!existingThreadScopedIds.includes(threadScopedIdValue)) {
+    return threadScopedIdsByProjectScopedId;
   }
-  const nextThreadIds = existingThreadIds.filter(
-    (existingThreadId) => existingThreadId !== threadId,
+  const nextThreadScopedIds = existingThreadScopedIds.filter(
+    (existingThreadScopedId) => existingThreadScopedId !== threadScopedIdValue,
   );
-  if (nextThreadIds.length === existingThreadIds.length) {
-    return threadIdsByProjectId;
+  if (nextThreadScopedIds.length === existingThreadScopedIds.length) {
+    return threadScopedIdsByProjectScopedId;
   }
-  if (nextThreadIds.length === 0) {
-    const nextThreadIdsByProjectId = { ...threadIdsByProjectId };
-    delete nextThreadIdsByProjectId[projectId];
-    return nextThreadIdsByProjectId;
+  if (nextThreadScopedIds.length === 0) {
+    const next = { ...threadScopedIdsByProjectScopedId };
+    delete next[projectScopedIdValue];
+    return next;
   }
   return {
-    ...threadIdsByProjectId,
-    [projectId]: nextThreadIds,
+    ...threadScopedIdsByProjectScopedId,
+    [projectScopedIdValue]: nextThreadScopedIds,
   };
 }
 
-function buildThreadIdsByProjectId(threads: ReadonlyArray<Thread>): Record<string, ThreadId[]> {
-  const threadIdsByProjectId: Record<string, ThreadId[]> = {};
+function buildThreadScopedIdsByProjectScopedId(
+  threads: ReadonlyArray<Thread>,
+): Record<string, string[]> {
+  const threadScopedIdsByProjectScopedId: Record<string, string[]> = {};
   for (const thread of threads) {
-    const existingThreadIds = threadIdsByProjectId[thread.projectId] ?? EMPTY_THREAD_IDS;
-    threadIdsByProjectId[thread.projectId] = [...existingThreadIds, thread.id];
+    const nextProjectScopedId = getProjectScopedId({
+      environmentId: thread.environmentId ?? null,
+      id: thread.projectId,
+    });
+    const nextThreadScopedId = getThreadScopedId({
+      environmentId: thread.environmentId ?? null,
+      id: thread.id,
+    });
+    const existingThreadScopedIds =
+      threadScopedIdsByProjectScopedId[nextProjectScopedId] ?? EMPTY_SCOPED_IDS;
+    threadScopedIdsByProjectScopedId[nextProjectScopedId] = [
+      ...existingThreadScopedIds,
+      nextThreadScopedId,
+    ];
   }
-  return threadIdsByProjectId;
+  return threadScopedIdsByProjectScopedId;
 }
 
-function buildSidebarThreadsById(
+function buildSidebarThreadsByScopedId(
   threads: ReadonlyArray<Thread>,
 ): Record<string, SidebarThreadSummary> {
   return Object.fromEntries(
-    threads.map((thread) => [thread.id, buildSidebarThreadSummary(thread)]),
+    threads.map((thread) => [
+      getThreadScopedId({ environmentId: thread.environmentId, id: thread.id }),
+      buildSidebarThreadSummary(thread),
+    ]),
   );
 }
 
@@ -534,11 +596,12 @@ function attachmentPreviewRoutePath(attachmentId: string): string {
 
 function updateThreadState(
   state: AppState,
+  environmentId: EnvironmentId | null | undefined,
   threadId: ThreadId,
   updater: (thread: Thread) => Thread,
 ): AppState {
   let updatedThread: Thread | null = null;
-  const threads = updateThread(state.threads, threadId, (thread) => {
+  const threads = updateThread(state.threads, environmentId, threadId, (thread) => {
     const nextThread = updater(thread);
     if (nextThread !== thread) {
       updatedThread = nextThread;
@@ -548,17 +611,22 @@ function updateThreadState(
   if (threads === state.threads || updatedThread === null) {
     return state;
   }
+  const resolvedUpdatedThread = updatedThread as Thread;
 
-  const nextSummary = buildSidebarThreadSummary(updatedThread);
-  const previousSummary = state.sidebarThreadsById[threadId];
-  const sidebarThreadsById = sidebarThreadSummariesEqual(previousSummary, nextSummary)
-    ? state.sidebarThreadsById
+  const nextSummary = buildSidebarThreadSummary(resolvedUpdatedThread);
+  const updatedThreadScopedId = getThreadScopedId({
+    environmentId: resolvedUpdatedThread.environmentId ?? null,
+    id: resolvedUpdatedThread.id,
+  });
+  const previousSummary = state.sidebarThreadsByScopedId[updatedThreadScopedId];
+  const sidebarThreadsByScopedId = sidebarThreadSummariesEqual(previousSummary, nextSummary)
+    ? state.sidebarThreadsByScopedId
     : {
-        ...state.sidebarThreadsById,
-        [threadId]: nextSummary,
+        ...state.sidebarThreadsByScopedId,
+        [updatedThreadScopedId]: nextSummary,
       };
 
-  if (sidebarThreadsById === state.sidebarThreadsById) {
+  if (sidebarThreadsByScopedId === state.sidebarThreadsByScopedId) {
     return {
       ...state,
       threads,
@@ -568,46 +636,84 @@ function updateThreadState(
   return {
     ...state,
     threads,
-    sidebarThreadsById,
+    sidebarThreadsByScopedId,
   };
 }
 
 // ── Pure state transition functions ────────────────────────────────────
 
-export function syncServerReadModel(state: AppState, readModel: OrchestrationReadModel): AppState {
-  const projects = readModel.projects
+function resolveTargetEnvironmentId(
+  state: AppState,
+  environmentId?: EnvironmentId | null,
+): EnvironmentId | null {
+  return environmentId ?? state.activeEnvironmentId ?? null;
+}
+
+export function syncServerReadModel(
+  state: AppState,
+  readModel: OrchestrationReadModel,
+  environmentId?: EnvironmentId | null,
+): AppState {
+  const targetEnvironmentId = resolveTargetEnvironmentId(state, environmentId);
+  const projectsForEnvironment = readModel.projects
     .filter((project) => project.deletedAt === null)
-    .map(mapProject);
-  const threads = readModel.threads.filter((thread) => thread.deletedAt === null).map(mapThread);
-  const sidebarThreadsById = buildSidebarThreadsById(threads);
-  const threadIdsByProjectId = buildThreadIdsByProjectId(threads);
+    .map((project) => mapProject(project, targetEnvironmentId));
+  const threadsForEnvironment = readModel.threads
+    .filter((thread) => thread.deletedAt === null)
+    .map((thread) => mapThread(thread, targetEnvironmentId));
+  const projects = [
+    ...state.projects.filter(
+      (project) => !sameEnvironmentId(project.environmentId, targetEnvironmentId),
+    ),
+    ...projectsForEnvironment,
+  ];
+  const threads = [
+    ...state.threads.filter(
+      (thread) => !sameEnvironmentId(thread.environmentId, targetEnvironmentId),
+    ),
+    ...threadsForEnvironment,
+  ];
+  const sidebarThreadsByScopedId = buildSidebarThreadsByScopedId(threads);
+  const threadScopedIdsByProjectScopedId = buildThreadScopedIdsByProjectScopedId(threads);
   return {
     ...state,
     projects,
     threads,
-    sidebarThreadsById,
-    threadIdsByProjectId,
+    sidebarThreadsByScopedId,
+    threadScopedIdsByProjectScopedId,
     bootstrapComplete: true,
   };
 }
 
-export function applyOrchestrationEvent(state: AppState, event: OrchestrationEvent): AppState {
+export function applyOrchestrationEvent(
+  state: AppState,
+  event: OrchestrationEvent,
+  environmentId?: EnvironmentId | null,
+): AppState {
+  const targetEnvironmentId = resolveTargetEnvironmentId(state, environmentId);
   switch (event.type) {
     case "project.created": {
       const existingIndex = state.projects.findIndex(
         (project) =>
-          project.id === event.payload.projectId || project.cwd === event.payload.workspaceRoot,
+          (project.id === event.payload.projectId &&
+            sameEnvironmentId(project.environmentId, targetEnvironmentId)) ||
+          (project.cwd === event.payload.workspaceRoot &&
+            sameEnvironmentId(project.environmentId, targetEnvironmentId)),
       );
-      const nextProject = mapProject({
-        id: event.payload.projectId,
-        title: event.payload.title,
-        workspaceRoot: event.payload.workspaceRoot,
-        defaultModelSelection: event.payload.defaultModelSelection,
-        scripts: event.payload.scripts,
-        createdAt: event.payload.createdAt,
-        updatedAt: event.payload.updatedAt,
-        deletedAt: null,
-      });
+      const nextProject = mapProject(
+        {
+          id: event.payload.projectId,
+          title: event.payload.title,
+          workspaceRoot: event.payload.workspaceRoot,
+          repositoryIdentity: event.payload.repositoryIdentity ?? null,
+          defaultModelSelection: event.payload.defaultModelSelection,
+          scripts: event.payload.scripts,
+          createdAt: event.payload.createdAt,
+          updatedAt: event.payload.updatedAt,
+          deletedAt: null,
+        },
+        targetEnvironmentId,
+      );
       const projects =
         existingIndex >= 0
           ? state.projects.map((project, index) =>
@@ -618,105 +724,171 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "project.meta-updated": {
-      const projects = updateProject(state.projects, event.payload.projectId, (project) => ({
-        ...project,
-        ...(event.payload.title !== undefined ? { name: event.payload.title } : {}),
-        ...(event.payload.workspaceRoot !== undefined ? { cwd: event.payload.workspaceRoot } : {}),
-        ...(event.payload.defaultModelSelection !== undefined
-          ? {
-              defaultModelSelection: event.payload.defaultModelSelection
-                ? normalizeModelSelection(event.payload.defaultModelSelection)
-                : null,
-            }
-          : {}),
-        ...(event.payload.scripts !== undefined
-          ? { scripts: mapProjectScripts(event.payload.scripts) }
-          : {}),
-        updatedAt: event.payload.updatedAt,
-      }));
+      const projects = updateProject(
+        state.projects,
+        targetEnvironmentId,
+        event.payload.projectId,
+        (project) => ({
+          ...project,
+          ...(event.payload.title !== undefined ? { name: event.payload.title } : {}),
+          ...(event.payload.workspaceRoot !== undefined
+            ? { cwd: event.payload.workspaceRoot }
+            : {}),
+          ...(event.payload.repositoryIdentity !== undefined
+            ? { repositoryIdentity: event.payload.repositoryIdentity }
+            : {}),
+          ...(event.payload.defaultModelSelection !== undefined
+            ? {
+                defaultModelSelection: event.payload.defaultModelSelection
+                  ? normalizeModelSelection(event.payload.defaultModelSelection)
+                  : null,
+              }
+            : {}),
+          ...(event.payload.scripts !== undefined
+            ? { scripts: mapProjectScripts(event.payload.scripts) }
+            : {}),
+          updatedAt: event.payload.updatedAt,
+        }),
+      );
       return projects === state.projects ? state : { ...state, projects };
     }
 
     case "project.deleted": {
-      const projects = state.projects.filter((project) => project.id !== event.payload.projectId);
+      const projects = state.projects.filter(
+        (project) =>
+          project.id !== event.payload.projectId ||
+          !sameEnvironmentId(project.environmentId, targetEnvironmentId),
+      );
       return projects.length === state.projects.length ? state : { ...state, projects };
     }
 
     case "thread.created": {
-      const existing = state.threads.find((thread) => thread.id === event.payload.threadId);
-      const nextThread = mapThread({
-        id: event.payload.threadId,
-        projectId: event.payload.projectId,
-        title: event.payload.title,
-        modelSelection: event.payload.modelSelection,
-        runtimeMode: event.payload.runtimeMode,
-        interactionMode: event.payload.interactionMode,
-        branch: event.payload.branch,
-        worktreePath: event.payload.worktreePath,
-        latestTurn: null,
-        createdAt: event.payload.createdAt,
-        updatedAt: event.payload.updatedAt,
-        archivedAt: null,
-        deletedAt: null,
-        messages: [],
-        proposedPlans: [],
-        activities: [],
-        checkpoints: [],
-        session: null,
-      });
+      const existing = state.threads.find(
+        (thread) =>
+          thread.id === event.payload.threadId &&
+          sameEnvironmentId(thread.environmentId, targetEnvironmentId),
+      );
+      const nextThread = mapThread(
+        {
+          id: event.payload.threadId,
+          projectId: event.payload.projectId,
+          title: event.payload.title,
+          modelSelection: event.payload.modelSelection,
+          runtimeMode: event.payload.runtimeMode,
+          interactionMode: event.payload.interactionMode,
+          branch: event.payload.branch,
+          worktreePath: event.payload.worktreePath,
+          latestTurn: null,
+          createdAt: event.payload.createdAt,
+          updatedAt: event.payload.updatedAt,
+          archivedAt: null,
+          deletedAt: null,
+          messages: [],
+          proposedPlans: [],
+          activities: [],
+          checkpoints: [],
+          session: null,
+        },
+        targetEnvironmentId,
+      );
       const threads = existing
-        ? state.threads.map((thread) => (thread.id === nextThread.id ? nextThread : thread))
+        ? state.threads.map((thread) =>
+            thread.id === nextThread.id &&
+            sameEnvironmentId(thread.environmentId, targetEnvironmentId)
+              ? nextThread
+              : thread,
+          )
         : [...state.threads, nextThread];
       const nextSummary = buildSidebarThreadSummary(nextThread);
-      const previousSummary = state.sidebarThreadsById[nextThread.id];
-      const sidebarThreadsById = sidebarThreadSummariesEqual(previousSummary, nextSummary)
-        ? state.sidebarThreadsById
+      const nextThreadScopedId = getThreadScopedId({
+        environmentId: nextThread.environmentId ?? null,
+        id: nextThread.id,
+      });
+      const previousSummary = state.sidebarThreadsByScopedId[nextThreadScopedId];
+      const sidebarThreadsByScopedId = sidebarThreadSummariesEqual(previousSummary, nextSummary)
+        ? state.sidebarThreadsByScopedId
         : {
-            ...state.sidebarThreadsById,
-            [nextThread.id]: nextSummary,
+            ...state.sidebarThreadsByScopedId,
+            [nextThreadScopedId]: nextSummary,
           };
-      const nextThreadIdsByProjectId =
+      const nextProjectScopedId = getProjectScopedId({
+        environmentId: nextThread.environmentId ?? null,
+        id: nextThread.projectId,
+      });
+      const previousProjectScopedId =
         existing !== undefined && existing.projectId !== nextThread.projectId
-          ? removeThreadIdByProjectId(state.threadIdsByProjectId, existing.projectId, existing.id)
-          : state.threadIdsByProjectId;
-      const threadIdsByProjectId = appendThreadIdByProjectId(
-        nextThreadIdsByProjectId,
-        nextThread.projectId,
-        nextThread.id,
+          ? getProjectScopedId({
+              environmentId: existing.environmentId ?? null,
+              id: existing.projectId,
+            })
+          : null;
+      const nextThreadScopedIdsByProjectScopedId =
+        previousProjectScopedId !== null
+          ? removeThreadScopedIdByProjectScopedId(
+              state.threadScopedIdsByProjectScopedId,
+              previousProjectScopedId,
+              nextThreadScopedId,
+            )
+          : state.threadScopedIdsByProjectScopedId;
+      const threadScopedIdsByProjectScopedId = appendThreadScopedIdByProjectScopedId(
+        nextThreadScopedIdsByProjectScopedId,
+        nextProjectScopedId,
+        nextThreadScopedId,
       );
       return {
         ...state,
         threads,
-        sidebarThreadsById,
-        threadIdsByProjectId,
+        sidebarThreadsByScopedId,
+        threadScopedIdsByProjectScopedId,
       };
     }
 
     case "thread.deleted": {
-      const threads = state.threads.filter((thread) => thread.id !== event.payload.threadId);
+      const threads = state.threads.filter(
+        (thread) =>
+          thread.id !== event.payload.threadId ||
+          !sameEnvironmentId(thread.environmentId, targetEnvironmentId),
+      );
       if (threads.length === state.threads.length) {
         return state;
       }
-      const deletedThread = state.threads.find((thread) => thread.id === event.payload.threadId);
-      const sidebarThreadsById = { ...state.sidebarThreadsById };
-      delete sidebarThreadsById[event.payload.threadId];
-      const threadIdsByProjectId = deletedThread
-        ? removeThreadIdByProjectId(
-            state.threadIdsByProjectId,
-            deletedThread.projectId,
-            deletedThread.id,
+      const deletedThread = state.threads.find(
+        (thread) =>
+          thread.id === event.payload.threadId &&
+          sameEnvironmentId(thread.environmentId, targetEnvironmentId),
+      );
+      const sidebarThreadsByScopedId = { ...state.sidebarThreadsByScopedId };
+      if (deletedThread) {
+        delete sidebarThreadsByScopedId[
+          getThreadScopedId({
+            environmentId: deletedThread.environmentId ?? null,
+            id: deletedThread.id,
+          })
+        ];
+      }
+      const threadScopedIdsByProjectScopedId = deletedThread
+        ? removeThreadScopedIdByProjectScopedId(
+            state.threadScopedIdsByProjectScopedId,
+            getProjectScopedId({
+              environmentId: deletedThread.environmentId ?? null,
+              id: deletedThread.projectId,
+            }),
+            getThreadScopedId({
+              environmentId: deletedThread.environmentId ?? null,
+              id: deletedThread.id,
+            }),
           )
-        : state.threadIdsByProjectId;
+        : state.threadScopedIdsByProjectScopedId;
       return {
         ...state,
         threads,
-        sidebarThreadsById,
-        threadIdsByProjectId,
+        sidebarThreadsByScopedId,
+        threadScopedIdsByProjectScopedId,
       };
     }
 
     case "thread.archived": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         archivedAt: event.payload.archivedAt,
         updatedAt: event.payload.updatedAt,
@@ -724,7 +896,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.unarchived": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         archivedAt: null,
         updatedAt: event.payload.updatedAt,
@@ -732,7 +904,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.meta-updated": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
         ...(event.payload.modelSelection !== undefined
@@ -747,7 +919,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.runtime-mode-set": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         runtimeMode: event.payload.runtimeMode,
         updatedAt: event.payload.updatedAt,
@@ -755,7 +927,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.interaction-mode-set": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         interactionMode: event.payload.interactionMode,
         updatedAt: event.payload.updatedAt,
@@ -763,7 +935,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.turn-start-requested": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: normalizeModelSelection(event.payload.modelSelection) }
@@ -779,7 +951,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
       if (event.payload.turnId === undefined) {
         return state;
       }
-      return updateThreadState(state, event.payload.threadId, (thread) => {
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => {
         const latestTurn = thread.latestTurn;
         if (latestTurn === null || latestTurn.turnId !== event.payload.turnId) {
           return thread;
@@ -801,7 +973,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.message-sent": {
-      return updateThreadState(state, event.payload.threadId, (thread) => {
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => {
         const message = mapMessage({
           id: event.payload.messageId,
           role: event.payload.role,
@@ -892,7 +1064,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.session-set": {
-      return updateThreadState(state, event.payload.threadId, (thread) => ({
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => ({
         ...thread,
         session: mapSession(event.payload.session),
         error: sanitizeThreadErrorMessage(event.payload.session.lastError),
@@ -923,7 +1095,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.session-stop-requested": {
-      return updateThreadState(state, event.payload.threadId, (thread) =>
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) =>
         thread.session === null
           ? thread
           : {
@@ -941,7 +1113,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.proposed-plan-upserted": {
-      return updateThreadState(state, event.payload.threadId, (thread) => {
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => {
         const proposedPlan = mapProposedPlan(event.payload.proposedPlan);
         const proposedPlans = [
           ...thread.proposedPlans.filter((entry) => entry.id !== proposedPlan.id),
@@ -961,7 +1133,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.turn-diff-completed": {
-      return updateThreadState(state, event.payload.threadId, (thread) => {
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => {
         const checkpoint = mapTurnDiffSummary({
           turnId: event.payload.turnId,
           checkpointTurnCount: event.payload.checkpointTurnCount,
@@ -1010,7 +1182,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.reverted": {
-      return updateThreadState(state, event.payload.threadId, (thread) => {
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => {
         const turnDiffSummaries = thread.turnDiffSummaries
           .filter(
             (entry) =>
@@ -1062,7 +1234,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.activity-appended": {
-      return updateThreadState(state, event.payload.threadId, (thread) => {
+      return updateThreadState(state, targetEnvironmentId, event.payload.threadId, (thread) => {
         const activities = [
           ...thread.activities.filter((activity) => activity.id !== event.payload.activity.id),
           { ...event.payload.activity },
@@ -1088,35 +1260,69 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
 export function applyOrchestrationEvents(
   state: AppState,
   events: ReadonlyArray<OrchestrationEvent>,
+  environmentId?: EnvironmentId | null,
 ): AppState {
   if (events.length === 0) {
     return state;
   }
-  return events.reduce((nextState, event) => applyOrchestrationEvent(nextState, event), state);
+  return events.reduce(
+    (nextState, event) => applyOrchestrationEvent(nextState, event, environmentId),
+    state,
+  );
 }
 
 export const selectProjectById =
   (projectId: Project["id"] | null | undefined) =>
   (state: AppState): Project | undefined =>
-    projectId ? state.projects.find((project) => project.id === projectId) : undefined;
+    projectId
+      ? state.projects.find(
+          (project) =>
+            project.id === projectId &&
+            sameEnvironmentId(project.environmentId, state.activeEnvironmentId),
+        )
+      : undefined;
 
 export const selectThreadById =
   (threadId: ThreadId | null | undefined) =>
   (state: AppState): Thread | undefined =>
-    threadId ? state.threads.find((thread) => thread.id === threadId) : undefined;
+    threadId
+      ? state.threads.find(
+          (thread) =>
+            thread.id === threadId &&
+            sameEnvironmentId(thread.environmentId, state.activeEnvironmentId),
+        )
+      : undefined;
 
 export const selectSidebarThreadSummaryById =
   (threadId: ThreadId | null | undefined) =>
   (state: AppState): SidebarThreadSummary | undefined =>
-    threadId ? state.sidebarThreadsById[threadId] : undefined;
+    threadId
+      ? state.sidebarThreadsByScopedId[
+          getThreadScopedId({
+            environmentId: state.activeEnvironmentId,
+            id: threadId,
+          })
+        ]
+      : undefined;
 
 export const selectThreadIdsByProjectId =
   (projectId: ProjectId | null | undefined) =>
   (state: AppState): ThreadId[] =>
-    projectId ? (state.threadIdsByProjectId[projectId] ?? EMPTY_THREAD_IDS) : EMPTY_THREAD_IDS;
+    projectId
+      ? (
+          state.threadScopedIdsByProjectScopedId[
+            getProjectScopedId({
+              environmentId: state.activeEnvironmentId,
+              id: projectId,
+            })
+          ] ?? EMPTY_SCOPED_IDS
+        )
+          .map((scopedId) => state.sidebarThreadsByScopedId[scopedId]?.id ?? null)
+          .filter((threadId): threadId is ThreadId => threadId !== null)
+      : EMPTY_THREAD_IDS;
 
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
-  return updateThreadState(state, threadId, (t) => {
+  return updateThreadState(state, state.activeEnvironmentId, threadId, (t) => {
     if (t.error === error) return t;
     return { ...t, error };
   });
@@ -1128,7 +1334,7 @@ export function setThreadBranch(
   branch: string | null,
   worktreePath: string | null,
 ): AppState {
-  return updateThreadState(state, threadId, (t) => {
+  return updateThreadState(state, state.activeEnvironmentId, threadId, (t) => {
     if (t.branch === branch && t.worktreePath === worktreePath) return t;
     const cwdChanged = t.worktreePath !== worktreePath;
     return {
@@ -1143,18 +1349,57 @@ export function setThreadBranch(
 // ── Zustand store ────────────────────────────────────────────────────
 
 interface AppStore extends AppState {
-  syncServerReadModel: (readModel: OrchestrationReadModel) => void;
-  applyOrchestrationEvent: (event: OrchestrationEvent) => void;
-  applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void;
+  setActiveEnvironmentId: (environmentId: EnvironmentId) => void;
+  syncServerReadModel: (
+    readModel: OrchestrationReadModel,
+    environmentId?: EnvironmentId | null,
+  ) => void;
+  applyOrchestrationEvent: (
+    event: OrchestrationEvent,
+    environmentId?: EnvironmentId | null,
+  ) => void;
+  applyOrchestrationEvents: (
+    events: ReadonlyArray<OrchestrationEvent>,
+    environmentId?: EnvironmentId | null,
+  ) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (threadId: ThreadId, branch: string | null, worktreePath: string | null) => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
   ...initialState,
-  syncServerReadModel: (readModel) => set((state) => syncServerReadModel(state, readModel)),
-  applyOrchestrationEvent: (event) => set((state) => applyOrchestrationEvent(state, event)),
-  applyOrchestrationEvents: (events) => set((state) => applyOrchestrationEvents(state, events)),
+  setActiveEnvironmentId: (environmentId) =>
+    set((state) => {
+      if (sameEnvironmentId(state.activeEnvironmentId, environmentId)) {
+        return state;
+      }
+
+      const projects = state.projects.map((project) =>
+        project.environmentId === null || project.environmentId === undefined
+          ? { ...project, environmentId }
+          : project,
+      );
+      const threads = state.threads.map((thread) =>
+        thread.environmentId === null || thread.environmentId === undefined
+          ? { ...thread, environmentId }
+          : thread,
+      );
+
+      return {
+        ...state,
+        activeEnvironmentId: environmentId,
+        projects,
+        threads,
+        sidebarThreadsByScopedId: buildSidebarThreadsByScopedId(threads),
+        threadScopedIdsByProjectScopedId: buildThreadScopedIdsByProjectScopedId(threads),
+      };
+    }),
+  syncServerReadModel: (readModel, environmentId) =>
+    set((state) => syncServerReadModel(state, readModel, environmentId)),
+  applyOrchestrationEvent: (event, environmentId) =>
+    set((state) => applyOrchestrationEvent(state, event, environmentId)),
+  applyOrchestrationEvents: (events, environmentId) =>
+    set((state) => applyOrchestrationEvents(state, events, environmentId)),
   setError: (threadId, error) => set((state) => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set((state) => setThreadBranch(state, threadId, branch, worktreePath)),

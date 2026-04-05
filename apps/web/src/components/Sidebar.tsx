@@ -59,7 +59,7 @@ import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
-import { useStore } from "../store";
+import { getProjectScopedId, getThreadScopedId, useStore } from "../store";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
 import {
@@ -667,8 +667,11 @@ function SortableProjectItem({
 
 export default function Sidebar() {
   const projects = useStore((store) => store.projects);
-  const sidebarThreadsById = useStore((store) => store.sidebarThreadsById);
-  const threadIdsByProjectId = useStore((store) => store.threadIdsByProjectId);
+  const activeEnvironmentId = useStore((store) => store.activeEnvironmentId);
+  const sidebarThreadsByScopedId = useStore((store) => store.sidebarThreadsByScopedId);
+  const threadScopedIdsByProjectScopedId = useStore(
+    (store) => store.threadScopedIdsByProjectScopedId,
+  );
   const { projectExpandedById, projectOrder, threadLastVisitedAtById } = useUiStateStore(
     useShallow((store) => ({
       projectExpandedById: store.projectExpandedById,
@@ -744,10 +747,46 @@ export default function Sidebar() {
       })),
     [orderedProjects, projectExpandedById],
   );
-  const sidebarThreads = useMemo(() => Object.values(sidebarThreadsById), [sidebarThreadsById]);
-  const projectCwdById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project.cwd] as const)),
+  const sidebarThreads = useMemo(
+    () => Object.values(sidebarThreadsByScopedId),
+    [sidebarThreadsByScopedId],
+  );
+  const projectCwdByScopedId = useMemo(
+    () =>
+      new Map(
+        projects.map((project) => [
+          getProjectScopedId({
+            environmentId: project.environmentId ?? null,
+            id: project.id,
+          }),
+          project.cwd,
+        ]),
+      ),
     [projects],
+  );
+  const getProjectThreads = useCallback(
+    (project: Pick<(typeof projects)[number], "id" | "environmentId">) =>
+      (
+        threadScopedIdsByProjectScopedId[
+          getProjectScopedId({
+            environmentId: project.environmentId ?? null,
+            id: project.id,
+          })
+        ] ?? []
+      )
+        .map((scopedId) => sidebarThreadsByScopedId[scopedId])
+        .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined),
+    [sidebarThreadsByScopedId, threadScopedIdsByProjectScopedId],
+  );
+  const getActiveEnvironmentThread = useCallback(
+    (threadId: ThreadId) =>
+      sidebarThreadsByScopedId[
+        getThreadScopedId({
+          environmentId: activeEnvironmentId ?? null,
+          id: threadId,
+        })
+      ],
+    [activeEnvironmentId, sidebarThreadsByScopedId],
   );
   const routeTerminalOpen = routeThreadId
     ? selectThreadTerminalState(terminalStateByThreadId, routeThreadId).terminalOpen
@@ -767,9 +806,17 @@ export default function Sidebar() {
       sidebarThreads.map((thread) => ({
         threadId: thread.id,
         branch: thread.branch,
-        cwd: thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null,
+        cwd:
+          thread.worktreePath ??
+          projectCwdByScopedId.get(
+            getProjectScopedId({
+              environmentId: thread.environmentId ?? null,
+              id: thread.projectId,
+            }),
+          ) ??
+          null,
       })),
-    [projectCwdById, sidebarThreads],
+    [projectCwdByScopedId, sidebarThreads],
   );
   const threadGitStatusCwds = useMemo(
     () => [
@@ -848,12 +895,9 @@ export default function Sidebar() {
   );
 
   const focusMostRecentThreadForProject = useCallback(
-    (projectId: ProjectId) => {
+    (project: Pick<(typeof projects)[number], "id" | "environmentId">) => {
       const latestThread = sortThreadsForSidebar(
-        (threadIdsByProjectId[projectId] ?? [])
-          .map((threadId) => sidebarThreadsById[threadId])
-          .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
-          .filter((thread) => thread.archivedAt === null),
+        getProjectThreads(project).filter((thread) => thread.archivedAt === null),
         appSettings.sidebarThreadSortOrder,
       )[0];
       if (!latestThread) return;
@@ -863,7 +907,7 @@ export default function Sidebar() {
         params: { threadId: latestThread.id },
       });
     },
-    [appSettings.sidebarThreadSortOrder, navigate, sidebarThreadsById, threadIdsByProjectId],
+    [appSettings.sidebarThreadSortOrder, getProjectThreads, navigate],
   );
 
   const addProjectFromPath = useCallback(
@@ -883,7 +927,7 @@ export default function Sidebar() {
 
       const existing = projects.find((project) => project.cwd === cwd);
       if (existing) {
-        focusMostRecentThreadForProject(existing.id);
+        focusMostRecentThreadForProject(existing);
         finishAddingProject();
         return;
       }
@@ -1059,10 +1103,17 @@ export default function Sidebar() {
     async (threadId: ThreadId, position: { x: number; y: number }) => {
       const api = readNativeApi();
       if (!api) return;
-      const thread = sidebarThreadsById[threadId];
+      const thread = getActiveEnvironmentThread(threadId);
       if (!thread) return;
       const threadWorkspacePath =
-        thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
+        thread.worktreePath ??
+        projectCwdByScopedId.get(
+          getProjectScopedId({
+            environmentId: thread.environmentId ?? null,
+            id: thread.projectId,
+          }),
+        ) ??
+        null;
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename thread" },
@@ -1121,8 +1172,8 @@ export default function Sidebar() {
       copyThreadIdToClipboard,
       deleteThread,
       markThreadUnread,
-      projectCwdById,
-      sidebarThreadsById,
+      getActiveEnvironmentThread,
+      projectCwdByScopedId,
     ],
   );
 
@@ -1144,7 +1195,7 @@ export default function Sidebar() {
 
       if (clicked === "mark-unread") {
         for (const id of ids) {
-          const thread = sidebarThreadsById[id];
+          const thread = getActiveEnvironmentThread(id);
           markThreadUnread(id, thread?.latestTurn?.completedAt);
         }
         clearSelection();
@@ -1176,7 +1227,7 @@ export default function Sidebar() {
       markThreadUnread,
       removeFromSelection,
       selectedThreadIds,
-      sidebarThreadsById,
+      getActiveEnvironmentThread,
     ],
   );
 
@@ -1236,7 +1287,10 @@ export default function Sidebar() {
     async (projectId: ProjectId, position: { x: number; y: number }) => {
       const api = readNativeApi();
       if (!api) return;
-      const project = projects.find((entry) => entry.id === projectId);
+      const project = projects.find(
+        (entry) =>
+          entry.id === projectId && (entry.environmentId ?? null) === (activeEnvironmentId ?? null),
+      );
       if (!project) return;
 
       const clicked = await api.contextMenu.show(
@@ -1252,7 +1306,7 @@ export default function Sidebar() {
       }
       if (clicked !== "delete") return;
 
-      const projectThreadIds = threadIdsByProjectId[projectId] ?? [];
+      const projectThreadIds = getProjectThreads(project).map((thread) => thread.id);
       if (projectThreadIds.length > 0) {
         toastManager.add({
           type: "warning",
@@ -1291,8 +1345,9 @@ export default function Sidebar() {
       clearProjectDraftThreadId,
       copyPathToClipboard,
       getDraftThreadByProjectId,
+      getProjectThreads,
+      activeEnvironmentId,
       projects,
-      threadIdsByProjectId,
     ],
   );
 
@@ -1400,10 +1455,7 @@ export default function Sidebar() {
             },
           });
         const projectThreads = sortThreadsForSidebar(
-          (threadIdsByProjectId[project.id] ?? [])
-            .map((threadId) => sidebarThreadsById[threadId])
-            .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
-            .filter((thread) => thread.archivedAt === null),
+          getProjectThreads(project).filter((thread) => thread.archivedAt === null),
           appSettings.sidebarThreadSortOrder,
         );
         const projectStatus = resolveProjectStatusIndicator(
@@ -1450,10 +1502,9 @@ export default function Sidebar() {
     [
       appSettings.sidebarThreadSortOrder,
       expandedThreadListsByProject,
+      getProjectThreads,
       routeThreadId,
       sortedProjects,
-      sidebarThreadsById,
-      threadIdsByProjectId,
       threadLastVisitedAtById,
     ],
   );

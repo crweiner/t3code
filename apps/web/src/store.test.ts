@@ -1,6 +1,7 @@
 import {
   CheckpointRef,
   DEFAULT_MODEL_BY_PROVIDER,
+  EnvironmentId,
   EventId,
   MessageId,
   ProjectId,
@@ -14,14 +15,20 @@ import { describe, expect, it } from "vitest";
 import {
   applyOrchestrationEvent,
   applyOrchestrationEvents,
+  getProjectScopedId,
+  getThreadScopedId,
   syncServerReadModel,
   type AppState,
 } from "./store";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Thread } from "./types";
 
+const localEnvironmentId = EnvironmentId.makeUnsafe("environment-local");
+const remoteEnvironmentId = EnvironmentId.makeUnsafe("environment-remote");
+
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: ThreadId.makeUnsafe("thread-1"),
+    environmentId: localEnvironmentId,
     codexThreadId: null,
     projectId: ProjectId.makeUnsafe("project-1"),
     title: "Thread",
@@ -47,15 +54,26 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 }
 
 function makeState(thread: Thread): AppState {
-  const threadIdsByProjectId: AppState["threadIdsByProjectId"] = {
-    [thread.projectId]: [thread.id],
+  const threadScopedIdsByProjectScopedId: AppState["threadScopedIdsByProjectScopedId"] = {
+    [getProjectScopedId({
+      environmentId: thread.environmentId ?? localEnvironmentId,
+      id: thread.projectId,
+    })]: [
+      getThreadScopedId({
+        environmentId: thread.environmentId ?? localEnvironmentId,
+        id: thread.id,
+      }),
+    ],
   };
   return {
+    activeEnvironmentId: thread.environmentId ?? localEnvironmentId,
     projects: [
       {
-        id: ProjectId.makeUnsafe("project-1"),
+        id: thread.projectId,
+        environmentId: thread.environmentId ?? localEnvironmentId,
         name: "Project",
         cwd: "/tmp/project",
+        repositoryIdentity: null,
         defaultModelSelection: {
           provider: "codex",
           model: "gpt-5-codex",
@@ -64,8 +82,8 @@ function makeState(thread: Thread): AppState {
       },
     ],
     threads: [thread],
-    sidebarThreadsById: {},
-    threadIdsByProjectId,
+    sidebarThreadsByScopedId: {},
+    threadScopedIdsByProjectScopedId,
     bootstrapComplete: true,
   };
 }
@@ -253,11 +271,14 @@ describe("store read model sync", () => {
     const project2 = ProjectId.makeUnsafe("project-2");
     const project3 = ProjectId.makeUnsafe("project-3");
     const initialState: AppState = {
+      activeEnvironmentId: localEnvironmentId,
       projects: [
         {
           id: project2,
+          environmentId: localEnvironmentId,
           name: "Project 2",
           cwd: "/tmp/project-2",
+          repositoryIdentity: null,
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -266,8 +287,10 @@ describe("store read model sync", () => {
         },
         {
           id: project1,
+          environmentId: localEnvironmentId,
           name: "Project 1",
           cwd: "/tmp/project-1",
+          repositoryIdentity: null,
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -276,8 +299,8 @@ describe("store read model sync", () => {
         },
       ],
       threads: [],
-      sidebarThreadsById: {},
-      threadIdsByProjectId: {},
+      sidebarThreadsByScopedId: {},
+      threadScopedIdsByProjectScopedId: {},
       bootstrapComplete: true,
     };
     const readModel: OrchestrationReadModel = {
@@ -306,6 +329,54 @@ describe("store read model sync", () => {
     const next = syncServerReadModel(initialState, readModel);
 
     expect(next.projects.map((project) => project.id)).toEqual([project1, project2, project3]);
+  });
+
+  it("replaces only the targeted environment during snapshot sync", () => {
+    const localThread = makeThread();
+    const remoteThread = makeThread({
+      id: ThreadId.makeUnsafe("thread-remote"),
+      projectId: ProjectId.makeUnsafe("project-remote"),
+      environmentId: remoteEnvironmentId,
+      title: "Remote thread",
+    });
+    const initialState: AppState = {
+      ...makeState(localThread),
+      projects: [
+        ...makeState(localThread).projects,
+        {
+          id: ProjectId.makeUnsafe("project-remote"),
+          environmentId: remoteEnvironmentId,
+          name: "Remote project",
+          cwd: "/tmp/remote-project",
+          repositoryIdentity: null,
+          defaultModelSelection: {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          scripts: [],
+        },
+      ],
+      threads: [localThread, remoteThread],
+    };
+
+    const next = syncServerReadModel(
+      initialState,
+      makeReadModel(
+        makeReadModelThread({
+          title: "Updated local thread",
+        }),
+      ),
+      localEnvironmentId,
+    );
+
+    expect(next.projects).toHaveLength(2);
+    expect(next.threads).toHaveLength(2);
+    expect(next.threads.find((thread) => thread.environmentId === remoteEnvironmentId)?.title).toBe(
+      "Remote thread",
+    );
+    expect(next.threads.find((thread) => thread.environmentId === localEnvironmentId)?.title).toBe(
+      "Updated local thread",
+    );
   });
 });
 
@@ -358,8 +429,10 @@ describe("incremental orchestration updates", () => {
       projects: [
         {
           id: originalProjectId,
+          environmentId: localEnvironmentId,
           name: "Project",
           cwd: "/tmp/project",
+          repositoryIdentity: null,
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -368,8 +441,9 @@ describe("incremental orchestration updates", () => {
         },
       ],
       threads: [],
-      sidebarThreadsById: {},
-      threadIdsByProjectId: {},
+      activeEnvironmentId: localEnvironmentId,
+      sidebarThreadsByScopedId: {},
+      threadScopedIdsByProjectScopedId: {},
       bootstrapComplete: true,
     };
 
@@ -395,6 +469,32 @@ describe("incremental orchestration updates", () => {
     expect(next.projects[0]?.name).toBe("Project Recreated");
   });
 
+  it("stores repository identity from live project events", () => {
+    const state = makeState(makeThread());
+
+    const next = applyOrchestrationEvent(
+      state,
+      makeEvent("project.meta-updated", {
+        projectId: ProjectId.makeUnsafe("project-1"),
+        repositoryIdentity: {
+          canonicalKey: "github.com/t3tools/t3code",
+          locator: {
+            source: "git-remote",
+            remoteName: "origin",
+            remoteUrl: "git@github.com:T3Tools/t3code.git",
+          },
+          displayName: "T3Tools/t3code",
+          provider: "github",
+          owner: "T3Tools",
+          name: "t3code",
+        },
+        updatedAt: "2026-02-27T00:00:01.000Z",
+      }),
+    );
+
+    expect(next.projects[0]?.repositoryIdentity?.canonicalKey).toBe("github.com/t3tools/t3code");
+  });
+
   it("removes stale project index entries when thread.created recreates a thread under a new project", () => {
     const originalProjectId = ProjectId.makeUnsafe("project-1");
     const recreatedProjectId = ProjectId.makeUnsafe("project-2");
@@ -404,11 +504,14 @@ describe("incremental orchestration updates", () => {
       projectId: originalProjectId,
     });
     const state: AppState = {
+      activeEnvironmentId: localEnvironmentId,
       projects: [
         {
           id: originalProjectId,
+          environmentId: localEnvironmentId,
           name: "Project 1",
           cwd: "/tmp/project-1",
+          repositoryIdentity: null,
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -417,8 +520,10 @@ describe("incremental orchestration updates", () => {
         },
         {
           id: recreatedProjectId,
+          environmentId: localEnvironmentId,
           name: "Project 2",
           cwd: "/tmp/project-2",
+          repositoryIdentity: null,
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -427,9 +532,17 @@ describe("incremental orchestration updates", () => {
         },
       ],
       threads: [thread],
-      sidebarThreadsById: {},
-      threadIdsByProjectId: {
-        [originalProjectId]: [threadId],
+      sidebarThreadsByScopedId: {},
+      threadScopedIdsByProjectScopedId: {
+        [getProjectScopedId({
+          environmentId: localEnvironmentId,
+          id: originalProjectId,
+        })]: [
+          getThreadScopedId({
+            environmentId: localEnvironmentId,
+            id: threadId,
+          }),
+        ],
       },
       bootstrapComplete: true,
     };
@@ -455,8 +568,27 @@ describe("incremental orchestration updates", () => {
 
     expect(next.threads).toHaveLength(1);
     expect(next.threads[0]?.projectId).toBe(recreatedProjectId);
-    expect(next.threadIdsByProjectId[originalProjectId]).toBeUndefined();
-    expect(next.threadIdsByProjectId[recreatedProjectId]).toEqual([threadId]);
+    expect(
+      next.threadScopedIdsByProjectScopedId[
+        getProjectScopedId({
+          environmentId: localEnvironmentId,
+          id: originalProjectId,
+        })
+      ],
+    ).toBeUndefined();
+    expect(
+      next.threadScopedIdsByProjectScopedId[
+        getProjectScopedId({
+          environmentId: localEnvironmentId,
+          id: recreatedProjectId,
+        })
+      ],
+    ).toEqual([
+      getThreadScopedId({
+        environmentId: localEnvironmentId,
+        id: threadId,
+      }),
+    ]);
   });
 
   it("updates only the affected thread for message events", () => {
