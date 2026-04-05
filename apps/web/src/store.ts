@@ -1305,21 +1305,35 @@ export const selectSidebarThreadSummaryById =
         ]
       : undefined;
 
+const _threadIdsByProjectCache = new Map<
+  string,
+  { scopedIds: string[]; sidebarMap: Record<string, SidebarThreadSummary>; result: ThreadId[] }
+>();
+
 export const selectThreadIdsByProjectId =
   (projectId: ProjectId | null | undefined) =>
-  (state: AppState): ThreadId[] =>
-    projectId
-      ? (
-          state.threadScopedIdsByProjectScopedId[
-            getProjectScopedId({
-              environmentId: state.activeEnvironmentId,
-              id: projectId,
-            })
-          ] ?? EMPTY_SCOPED_IDS
-        )
-          .map((scopedId) => state.sidebarThreadsByScopedId[scopedId]?.id ?? null)
-          .filter((threadId): threadId is ThreadId => threadId !== null)
-      : EMPTY_THREAD_IDS;
+  (state: AppState): ThreadId[] => {
+    if (!projectId) return EMPTY_THREAD_IDS;
+
+    const projectScopedId = getProjectScopedId({
+      environmentId: state.activeEnvironmentId,
+      id: projectId,
+    });
+    const scopedIds = state.threadScopedIdsByProjectScopedId[projectScopedId] ?? EMPTY_SCOPED_IDS;
+    const sidebarMap = state.sidebarThreadsByScopedId;
+
+    const cached = _threadIdsByProjectCache.get(projectScopedId);
+    if (cached && cached.scopedIds === scopedIds && cached.sidebarMap === sidebarMap) {
+      return cached.result;
+    }
+
+    const result = scopedIds
+      .map((scopedId) => sidebarMap[scopedId]?.id ?? null)
+      .filter((threadId): threadId is ThreadId => threadId !== null);
+
+    _threadIdsByProjectCache.set(projectScopedId, { scopedIds, sidebarMap, result });
+    return result;
+  };
 
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
   return updateThreadState(state, state.activeEnvironmentId, threadId, (t) => {
