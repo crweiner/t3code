@@ -53,7 +53,7 @@ export function getKnownEnvironmentHttpBaseUrl(
     } else if (url.protocol === "wss:") {
       url.protocol = "https:";
     }
-    return url.toString();
+    return url.origin;
   } catch {
     return baseUrl;
   }

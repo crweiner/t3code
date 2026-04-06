@@ -81,7 +81,13 @@ async function exchangeBootstrapCredential(
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    let message: string | undefined;
+    try {
+      const body = (await response.json()) as { error?: string };
+      message = body.error;
+    } catch {
+      // response wasn't JSON — fall through to generic message
+    }
     throw new Error(message || `Failed to bootstrap auth session (${response.status}).`);
   }
 

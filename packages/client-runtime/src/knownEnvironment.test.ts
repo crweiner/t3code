@@ -33,7 +33,7 @@ describe("known environment bootstrap helpers", () => {
           wsUrl: "ws://localhost:3773/ws",
         }),
       ),
-    ).toBe("http://localhost:3773/ws");
+    ).toBe("http://localhost:3773");
 
     expect(
       getKnownEnvironmentHttpBaseUrl(
@@ -42,7 +42,7 @@ describe("known environment bootstrap helpers", () => {
           wsUrl: "wss://remote.example.com/api/ws",
         }),
       ),
-    ).toBe("https://remote.example.com/api/ws");
+    ).toBe("https://remote.example.com");
   });
 });
 
