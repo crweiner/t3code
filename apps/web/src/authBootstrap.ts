@@ -1,4 +1,4 @@
-import type { AuthBootstrapInput, AuthBootstrapResult, AuthSessionState } from "@t3tools/contracts";
+import type { AuthBootstrapInput, AuthSessionState } from "@t3tools/contracts";
 import { resolveServerHttpUrl } from "./lib/utils";
 
 export type ServerAuthGateState =
@@ -56,7 +56,7 @@ async function fetchSessionState(): Promise<AuthSessionState> {
   return (await response.json()) as AuthSessionState;
 }
 
-async function exchangeBootstrapCredential(credential: string): Promise<AuthBootstrapResult> {
+async function exchangeBootstrapCredential(credential: string): Promise<void> {
   const payload: AuthBootstrapInput = { credential };
   const response = await fetch(resolveServerHttpUrl({ pathname: "/api/auth/bootstrap" }), {
     body: JSON.stringify(payload),
@@ -71,8 +71,6 @@ async function exchangeBootstrapCredential(credential: string): Promise<AuthBoot
     const message = await response.text();
     throw new Error(message || `Failed to bootstrap auth session (${response.status}).`);
   }
-
-  return (await response.json()) as AuthBootstrapResult;
 }
 
 async function bootstrapServerAuth(): Promise<ServerAuthGateState> {

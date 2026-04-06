@@ -40,12 +40,14 @@ export const authBootstrapRouteLayer = HttpRouter.add(
     );
     const result = yield* serverAuth.exchangeBootstrapCredential(payload.credential);
 
-    return yield* HttpServerResponse.jsonUnsafe(result, { status: 200 }).pipe(
+    const { sessionToken: _token, ...responseBody } = result;
+    return yield* HttpServerResponse.jsonUnsafe(responseBody, { status: 200 }).pipe(
       HttpServerResponse.setCookie(descriptor.sessionCookieName, result.sessionToken, {
         expires: DateTime.toDate(result.expiresAt),
         httpOnly: true,
         path: "/",
         sameSite: "lax",
+        secure: descriptor.policy === "remote-reachable",
       }),
     );
   }).pipe(Effect.catchTag("AuthError", (error) => Effect.succeed(toUnauthorizedResponse(error)))),

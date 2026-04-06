@@ -65,7 +65,6 @@ describe("resolveInitialServerAuthGateState", () => {
         jsonResponse({
           authenticated: true,
           sessionMethod: "browser-session-cookie",
-          sessionToken: "session-token",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
       );
@@ -207,7 +206,6 @@ describe("resolveInitialServerAuthGateState", () => {
         jsonResponse({
           authenticated: true,
           sessionMethod: "browser-session-cookie",
-          sessionToken: "session-token",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
       );

@@ -492,6 +492,12 @@ const getHttpServerUrl = (pathname = "") =>
     return `http://127.0.0.1:${address.port}${pathname}`;
   });
 
+function parseSessionTokenFromSetCookie(setCookie: string | null): string | null {
+  if (!setCookie) return null;
+  const match = /t3_session=([^;]+)/.exec(setCookie);
+  return match?.[1] ?? null;
+}
+
 const bootstrapBrowserSession = (credential = defaultDesktopBootstrapToken) =>
   Effect.gen(function* () {
     const bootstrapUrl = yield* getHttpServerUrl("/api/auth/bootstrap");
@@ -509,13 +515,15 @@ const bootstrapBrowserSession = (credential = defaultDesktopBootstrapToken) =>
     const body = (yield* Effect.promise(() => response.json())) as {
       readonly authenticated: boolean;
       readonly sessionMethod: string;
-      readonly sessionToken: string;
       readonly expiresAt: string;
     };
+    const cookie = response.headers.get("set-cookie");
+    const sessionToken = parseSessionTokenFromSetCookie(cookie);
     return {
       response,
       body,
-      cookie: response.headers.get("set-cookie"),
+      cookie,
+      sessionToken,
     };
   });
 
@@ -525,18 +533,18 @@ const getAuthenticatedSessionToken = (credential = defaultDesktopBootstrapToken)
       return cachedDefaultSessionToken;
     }
 
-    const { response, body } = yield* bootstrapBrowserSession(credential);
-    if (!response.ok) {
+    const { response, sessionToken } = yield* bootstrapBrowserSession(credential);
+    if (!response.ok || !sessionToken) {
       return yield* Effect.fail(
         new Error(`Expected bootstrap session response to succeed, got ${response.status}`),
       );
     }
 
     if (credential === defaultDesktopBootstrapToken) {
-      cachedDefaultSessionToken = body.sessionToken;
+      cachedDefaultSessionToken = sessionToken;
     }
 
-    return body.sessionToken;
+    return sessionToken;
   });
 
 const getWsServerUrl = (
@@ -720,13 +728,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
-      const { response: bootstrapResponse, body: bootstrapBody } = yield* bootstrapBrowserSession();
+      const { response: bootstrapResponse, sessionToken: bootstrapSessionToken } =
+        yield* bootstrapBrowserSession();
 
       assert.equal(bootstrapResponse.status, 200);
+      assert(bootstrapSessionToken, "Expected session token in Set-Cookie header");
 
       const wsUrl = appendSessionTokenToUrl(
         yield* getWsServerUrl("/ws", { authenticated: false }),
-        bootstrapBody.sessionToken,
+        bootstrapSessionToken,
       );
       const response = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) => client[WS_METHODS.serverGetConfig]({})),
