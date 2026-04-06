@@ -1,5 +1,5 @@
 import type { RepositoryIdentity } from "@t3tools/contracts";
-import { Effect, Layer, Ref } from "effect";
+import { Cache, Duration, Effect, Exit, Layer } from "effect";
 import { runProcess } from "../../processRunner.ts";
 import { detectGitHostingProviderFromRemoteUrl, normalizeGitRemoteUrl } from "@t3tools/shared/git";
 
@@ -64,77 +64,84 @@ function buildRepositoryIdentity(input: {
   };
 }
 
-async function resolveRepositoryIdentity(cwd: string): Promise<{
-  readonly cacheKey: string;
-  readonly identity: RepositoryIdentity | null;
-}> {
-  let topLevel = cwd;
+const DEFAULT_REPOSITORY_IDENTITY_CACHE_CAPACITY = 512;
+const DEFAULT_POSITIVE_CACHE_TTL = Duration.minutes(1);
+const DEFAULT_NEGATIVE_CACHE_TTL = Duration.seconds(10);
+
+interface RepositoryIdentityResolverOptions {
+  readonly cacheCapacity?: number;
+  readonly positiveCacheTtl?: Duration.Input;
+  readonly negativeCacheTtl?: Duration.Input;
+}
+
+async function resolveRepositoryIdentityCacheKey(cwd: string): Promise<string> {
+  let cacheKey = cwd;
 
   try {
     const topLevelResult = await runProcess("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
       allowNonZeroExit: true,
     });
     if (topLevelResult.code !== 0) {
-      return { cacheKey: cwd, identity: null };
+      return cacheKey;
     }
 
     const candidate = topLevelResult.stdout.trim();
     if (candidate.length > 0) {
-      topLevel = candidate;
+      cacheKey = candidate;
     }
   } catch {
-    return { cacheKey: cwd, identity: null };
+    return cacheKey;
   }
 
+  return cacheKey;
+}
+
+async function resolveRepositoryIdentityFromCacheKey(
+  cacheKey: string,
+): Promise<RepositoryIdentity | null> {
   try {
-    const remoteResult = await runProcess("git", ["-C", topLevel, "remote", "-v"], {
+    const remoteResult = await runProcess("git", ["-C", cacheKey, "remote", "-v"], {
       allowNonZeroExit: true,
     });
     if (remoteResult.code !== 0) {
-      return { cacheKey: topLevel, identity: null };
+      return null;
     }
 
     const remote = pickPrimaryRemote(parseRemoteFetchUrls(remoteResult.stdout));
-    return {
-      cacheKey: topLevel,
-      identity: remote ? buildRepositoryIdentity(remote) : null,
-    };
+    return remote ? buildRepositoryIdentity(remote) : null;
   } catch {
-    return { cacheKey: topLevel, identity: null };
+    return null;
   }
 }
 
-export const makeRepositoryIdentityResolver = Effect.gen(function* () {
-  const cacheRef = yield* Ref.make(new Map<string, RepositoryIdentity>());
+export const makeRepositoryIdentityResolver = Effect.fn("makeRepositoryIdentityResolver")(
+  function* (options: RepositoryIdentityResolverOptions = {}) {
+    const repositoryIdentityCache = yield* Cache.makeWith<string, RepositoryIdentity | null>({
+      capacity: options.cacheCapacity ?? DEFAULT_REPOSITORY_IDENTITY_CACHE_CAPACITY,
+      lookup: (cacheKey) => Effect.promise(() => resolveRepositoryIdentityFromCacheKey(cacheKey)),
+      timeToLive: Exit.match({
+        onSuccess: (value) =>
+          value === null
+            ? (options.negativeCacheTtl ?? DEFAULT_NEGATIVE_CACHE_TTL)
+            : (options.positiveCacheTtl ?? DEFAULT_POSITIVE_CACHE_TTL),
+        onFailure: () => Duration.zero,
+      }),
+    });
 
-  const resolve: RepositoryIdentityResolverShape["resolve"] = Effect.fn(
-    "RepositoryIdentityResolver.resolve",
-  )(function* (cwd) {
-    const cache = yield* Ref.get(cacheRef);
-    const cached = cache.get(cwd);
-    if (cached !== undefined) {
-      return cached;
-    }
+    const resolve: RepositoryIdentityResolverShape["resolve"] = Effect.fn(
+      "RepositoryIdentityResolver.resolve",
+    )(function* (cwd) {
+      const cacheKey = yield* Effect.promise(() => resolveRepositoryIdentityCacheKey(cwd));
+      return yield* Cache.get(repositoryIdentityCache, cacheKey);
+    });
 
-    const resolved = yield* Effect.promise(() => resolveRepositoryIdentity(cwd));
-    if (resolved.identity !== null) {
-      const identity = resolved.identity;
-      yield* Ref.update(cacheRef, (current) => {
-        const next = new Map(current);
-        next.set(cwd, identity);
-        next.set(resolved.cacheKey, identity);
-        return next;
-      });
-    }
-    return resolved.identity;
-  });
-
-  return {
-    resolve,
-  } satisfies RepositoryIdentityResolverShape;
-});
+    return {
+      resolve,
+    } satisfies RepositoryIdentityResolverShape;
+  },
+);
 
 export const RepositoryIdentityResolverLive = Layer.effect(
   RepositoryIdentityResolver,
-  makeRepositoryIdentityResolver,
+  makeRepositoryIdentityResolver(),
 );
