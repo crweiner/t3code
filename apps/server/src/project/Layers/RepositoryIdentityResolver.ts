@@ -104,25 +104,39 @@ async function resolveRepositoryIdentity(cwd: string): Promise<{
   }
 }
 
+interface CacheEntry {
+  readonly identity: RepositoryIdentity;
+  readonly cachedAt: number;
+}
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 export const makeRepositoryIdentityResolver = Effect.gen(function* () {
-  const cacheRef = yield* Ref.make(new Map<string, RepositoryIdentity>());
+  const cacheRef = yield* Ref.make(new Map<string, CacheEntry>());
 
   const resolve: RepositoryIdentityResolverShape["resolve"] = Effect.fn(
     "RepositoryIdentityResolver.resolve",
   )(function* (cwd) {
     const cache = yield* Ref.get(cacheRef);
     const cached = cache.get(cwd);
-    if (cached !== undefined) {
-      return cached;
+    if (cached !== undefined && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+      return cached.identity;
     }
 
     const resolved = yield* Effect.promise(() => resolveRepositoryIdentity(cwd));
     if (resolved.identity !== null) {
-      const identity = resolved.identity;
+      const entry: CacheEntry = { identity: resolved.identity, cachedAt: Date.now() };
       yield* Ref.update(cacheRef, (current) => {
         const next = new Map(current);
-        next.set(cwd, identity);
-        next.set(resolved.cacheKey, identity);
+        next.set(cwd, entry);
+        next.set(resolved.cacheKey, entry);
+        return next;
+      });
+    } else {
+      yield* Ref.update(cacheRef, (current) => {
+        const next = new Map(current);
+        next.delete(cwd);
+        next.delete(resolved.cacheKey);
         return next;
       });
     }
