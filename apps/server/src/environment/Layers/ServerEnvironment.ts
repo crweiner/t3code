@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { EnvironmentId, type ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
-import { Effect, FileSystem, Layer, Path } from "effect";
+import { Effect, FileSystem, Layer, Path, Random } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { ServerEnvironment, type ServerEnvironmentShape } from "../Services/ServerEnvironment.ts";
@@ -30,7 +29,7 @@ function platformArch(): ExecutionEnvironmentDescriptor["platform"]["arch"] {
   }
 }
 
-export const makeServerEnvironment = Effect.gen(function* () {
+export const makeServerEnvironment = Effect.fn("makeServerEnvironment")(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
@@ -54,16 +53,16 @@ export const makeServerEnvironment = Effect.gen(function* () {
   const persistEnvironmentId = (value: string) =>
     fileSystem.writeFileString(serverConfig.environmentIdPath, `${value}\n`);
 
-  const environmentIdRaw = yield* readPersistedEnvironmentId.pipe(
-    Effect.flatMap((persisted) => {
-      if (persisted) {
-        return Effect.succeed(persisted);
-      }
+  const environmentIdRaw = yield* Effect.gen(function* () {
+    const persisted = yield* readPersistedEnvironmentId;
+    if (persisted) {
+      return persisted;
+    }
 
-      const generated = randomUUID();
-      return persistEnvironmentId(generated).pipe(Effect.as(generated));
-    }),
-  );
+    const generated = yield* Random.nextUUIDv4;
+    yield* persistEnvironmentId(generated);
+    return generated;
+  });
 
   const environmentId = EnvironmentId.makeUnsafe(environmentIdRaw);
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
@@ -93,4 +92,4 @@ export const makeServerEnvironment = Effect.gen(function* () {
   } satisfies ServerEnvironmentShape;
 });
 
-export const ServerEnvironmentLive = Layer.effect(ServerEnvironment, makeServerEnvironment);
+export const ServerEnvironmentLive = Layer.effect(ServerEnvironment, makeServerEnvironment());
