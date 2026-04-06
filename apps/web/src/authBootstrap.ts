@@ -2,6 +2,13 @@ import type { AuthBootstrapInput, AuthBootstrapResult, AuthSessionState } from "
 
 import { resolvePrimaryEnvironmentBootstrapUrl } from "./environmentBootstrap";
 
+function wsUrlToHttpUrl(url: string): string {
+  const parsed = new URL(url);
+  if (parsed.protocol === "ws:") parsed.protocol = "http:";
+  else if (parsed.protocol === "wss:") parsed.protocol = "https:";
+  return parsed.href;
+}
+
 export type ServerAuthGateState =
   | { status: "authenticated" }
   | {
@@ -80,7 +87,7 @@ async function exchangeBootstrapCredential(
 }
 
 async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
-  const baseUrl = resolvePrimaryEnvironmentBootstrapUrl();
+  const baseUrl = wsUrlToHttpUrl(resolvePrimaryEnvironmentBootstrapUrl());
   const bootstrapCredential = getBootstrapCredential();
   const currentSession = await fetchSessionState(baseUrl);
   if (currentSession.authenticated) {
@@ -112,7 +119,10 @@ export async function submitServerAuthCredential(credential: string): Promise<vo
     throw new Error("Enter a pairing token to continue.");
   }
 
-  await exchangeBootstrapCredential(resolvePrimaryEnvironmentBootstrapUrl(), trimmedCredential);
+  await exchangeBootstrapCredential(
+    wsUrlToHttpUrl(resolvePrimaryEnvironmentBootstrapUrl()),
+    trimmedCredential,
+  );
   stripPairingTokenFromUrl();
 }
 

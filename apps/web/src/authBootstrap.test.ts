@@ -86,10 +86,10 @@ describe("resolveInitialServerAuthGateState", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toEqual(
-      new URL("/api/auth/session", "ws://localhost:3773/"),
+      new URL("/api/auth/session", "http://localhost:3773/"),
     );
     expect(fetchMock.mock.calls[1]?.[0]).toEqual(
-      new URL("/api/auth/bootstrap", "ws://localhost:3773/"),
+      new URL("/api/auth/bootstrap", "http://localhost:3773/"),
     );
   });
 
