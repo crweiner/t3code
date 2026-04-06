@@ -1435,9 +1435,6 @@ export default function Sidebar() {
         const renderedThreads = pinnedCollapsedThread
           ? [pinnedCollapsedThread]
           : visibleProjectThreads;
-        const renderedThreadIds = pinnedCollapsedThread
-          ? [pinnedCollapsedThread.id]
-          : visibleProjectThreads.map((thread) => thread.id);
         const showEmptyThreadState = project.expanded && projectThreads.length === 0;
 
         return {
@@ -1447,7 +1444,6 @@ export default function Sidebar() {
           project,
           projectStatus,
           renderedThreads,
-          renderedThreadIds,
           showEmptyThreadState,
           shouldShowThreadPanel,
           isThreadListExpanded,

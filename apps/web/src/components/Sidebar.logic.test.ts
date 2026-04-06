@@ -326,14 +326,17 @@ describe("getVisibleSidebarThreadIds", () => {
     expect(
       getVisibleSidebarThreadIds([
         {
-          renderedThreadIds: [
-            ThreadId.makeUnsafe("thread-12"),
-            ThreadId.makeUnsafe("thread-11"),
-            ThreadId.makeUnsafe("thread-10"),
+          renderedThreads: [
+            { id: ThreadId.makeUnsafe("thread-12") },
+            { id: ThreadId.makeUnsafe("thread-11") },
+            { id: ThreadId.makeUnsafe("thread-10") },
           ],
         },
         {
-          renderedThreadIds: [ThreadId.makeUnsafe("thread-8"), ThreadId.makeUnsafe("thread-6")],
+          renderedThreads: [
+            { id: ThreadId.makeUnsafe("thread-8") },
+            { id: ThreadId.makeUnsafe("thread-6") },
+          ],
         },
       ]),
     ).toEqual([
@@ -350,14 +353,17 @@ describe("getVisibleSidebarThreadIds", () => {
       getVisibleSidebarThreadIds([
         {
           shouldShowThreadPanel: false,
-          renderedThreadIds: [
-            ThreadId.makeUnsafe("thread-hidden-2"),
-            ThreadId.makeUnsafe("thread-hidden-1"),
+          renderedThreads: [
+            { id: ThreadId.makeUnsafe("thread-hidden-2") },
+            { id: ThreadId.makeUnsafe("thread-hidden-1") },
           ],
         },
         {
           shouldShowThreadPanel: true,
-          renderedThreadIds: [ThreadId.makeUnsafe("thread-12"), ThreadId.makeUnsafe("thread-11")],
+          renderedThreads: [
+            { id: ThreadId.makeUnsafe("thread-12") },
+            { id: ThreadId.makeUnsafe("thread-11") },
+          ],
         },
       ]),
     ).toEqual([ThreadId.makeUnsafe("thread-12"), ThreadId.makeUnsafe("thread-11")]);

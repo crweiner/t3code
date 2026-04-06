@@ -230,14 +230,16 @@ export function orderItemsByPreferredIds<TItem, TId>(input: {
   return [...ordered, ...remaining];
 }
 
-export function getVisibleSidebarThreadIds<TThreadId>(
+export function getVisibleSidebarThreadIds<TThread extends { id: unknown }>(
   renderedProjects: readonly {
     shouldShowThreadPanel?: boolean;
-    renderedThreadIds: readonly TThreadId[];
+    renderedThreads: readonly TThread[];
   }[],
-): TThreadId[] {
+): TThread["id"][] {
   return renderedProjects.flatMap((renderedProject) =>
-    renderedProject.shouldShowThreadPanel === false ? [] : renderedProject.renderedThreadIds,
+    renderedProject.shouldShowThreadPanel === false
+      ? []
+      : renderedProject.renderedThreads.map((thread) => thread.id),
   );
 }
 
