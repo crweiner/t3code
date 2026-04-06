@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
+import { vi } from "vitest";
 
 import { runProcess } from "../../processRunner.ts";
 import { RepositoryIdentityResolver } from "../Services/RepositoryIdentityResolver.ts";
@@ -132,10 +133,16 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
 
       yield* git(cwd, ["remote", "add", "origin", "git@github.com:T3Tools/t3code.git"]);
 
-      const resolvedIdentity = yield* resolver.resolve(cwd);
-      expect(resolvedIdentity).not.toBeNull();
-      expect(resolvedIdentity?.canonicalKey).toBe("github.com/t3tools/t3code");
-      expect(resolvedIdentity?.name).toBe("t3code");
+      const realNow = Date.now;
+      vi.spyOn(Date, "now").mockImplementation(() => realNow() + 60_000);
+      try {
+        const resolvedIdentity = yield* resolver.resolve(cwd);
+        expect(resolvedIdentity).not.toBeNull();
+        expect(resolvedIdentity?.canonicalKey).toBe("github.com/t3tools/t3code");
+        expect(resolvedIdentity?.name).toBe("t3code");
+      } finally {
+        vi.restoreAllMocks();
+      }
     }).pipe(Effect.provide(RepositoryIdentityResolverLive)),
   );
 });

@@ -104,8 +104,11 @@ async function resolveRepositoryIdentity(cwd: string): Promise<{
   }
 }
 
+const NEGATIVE_CACHE_TTL_MS = 30_000;
+
 export const makeRepositoryIdentityResolver = Effect.gen(function* () {
   const cacheRef = yield* Ref.make(new Map<string, RepositoryIdentity>());
+  const negativeCacheRef = yield* Ref.make(new Map<string, number>());
 
   const resolve: RepositoryIdentityResolverShape["resolve"] = Effect.fn(
     "RepositoryIdentityResolver.resolve",
@@ -116,6 +119,12 @@ export const makeRepositoryIdentityResolver = Effect.gen(function* () {
       return cached;
     }
 
+    const negativeCache = yield* Ref.get(negativeCacheRef);
+    const negativeCachedAt = negativeCache.get(cwd);
+    if (negativeCachedAt !== undefined && Date.now() - negativeCachedAt < NEGATIVE_CACHE_TTL_MS) {
+      return null;
+    }
+
     const resolved = yield* Effect.promise(() => resolveRepositoryIdentity(cwd));
     if (resolved.identity !== null) {
       const identity = resolved.identity;
@@ -123,6 +132,20 @@ export const makeRepositoryIdentityResolver = Effect.gen(function* () {
         const next = new Map(current);
         next.set(cwd, identity);
         next.set(resolved.cacheKey, identity);
+        return next;
+      });
+      yield* Ref.update(negativeCacheRef, (current) => {
+        const next = new Map(current);
+        next.delete(cwd);
+        next.delete(resolved.cacheKey);
+        return next;
+      });
+    } else {
+      const now = Date.now();
+      yield* Ref.update(negativeCacheRef, (current) => {
+        const next = new Map(current);
+        next.set(cwd, now);
+        next.set(resolved.cacheKey, now);
         return next;
       });
     }

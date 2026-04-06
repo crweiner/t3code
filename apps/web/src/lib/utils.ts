@@ -38,22 +38,15 @@ export const newThreadId = (): ThreadId => ThreadId.makeUnsafe(randomUUID());
 export const newMessageId = (): MessageId => MessageId.makeUnsafe(randomUUID());
 
 const isNonEmptyString = Predicate.compose(Predicate.isString, String.isNonEmpty);
-const firstNonEmptyString = (...values: unknown[]): string => {
-  for (const value of values) {
-    if (isNonEmptyString(value)) {
-      return value;
-    }
-  }
-  throw new Error("No non-empty string provided");
-};
-
 export const resolveServerUrl = (options?: {
   url?: string | undefined;
   protocol?: "http" | "https" | "ws" | "wss" | undefined;
   pathname?: string | undefined;
   searchParams?: Record<string, string> | undefined;
 }): string => {
-  const rawUrl = firstNonEmptyString(options?.url, resolvePrimaryEnvironmentBootstrapUrl());
+  const rawUrl = isNonEmptyString(options?.url)
+    ? options.url
+    : resolvePrimaryEnvironmentBootstrapUrl();
 
   const parsedUrl = new URL(rawUrl);
   if (options?.protocol) {
