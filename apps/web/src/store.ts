@@ -646,7 +646,7 @@ function resolveTargetEnvironmentId(
   state: AppState,
   environmentId?: EnvironmentId | null,
 ): EnvironmentId | null {
-  return environmentId ?? state.activeEnvironmentId ?? null;
+  return environmentId !== undefined ? environmentId : (state.activeEnvironmentId ?? null);
 }
 
 export function syncServerReadModel(
@@ -1305,21 +1305,43 @@ export const selectSidebarThreadSummaryById =
         ]
       : undefined;
 
-export const selectThreadIdsByProjectId =
-  (projectId: ProjectId | null | undefined) =>
-  (state: AppState): ThreadId[] =>
-    projectId
-      ? (
-          state.threadScopedIdsByProjectScopedId[
-            getProjectScopedId({
-              environmentId: state.activeEnvironmentId,
-              id: projectId,
-            })
-          ] ?? EMPTY_SCOPED_IDS
-        )
-          .map((scopedId) => state.sidebarThreadsByScopedId[scopedId]?.id ?? null)
-          .filter((threadId): threadId is ThreadId => threadId !== null)
-      : EMPTY_THREAD_IDS;
+export const selectThreadIdsByProjectId = (projectId: ProjectId | null | undefined) => {
+  let cachedProjectScopedId: string | null = null;
+  let cachedScopedIds: string[] | undefined;
+  let cachedSidebarThreadsByScopedId: Record<string, SidebarThreadSummary> | undefined;
+  let cachedResult: ThreadId[] = EMPTY_THREAD_IDS;
+
+  return (state: AppState): ThreadId[] => {
+    if (!projectId) {
+      return EMPTY_THREAD_IDS;
+    }
+
+    const projectScopedId = getProjectScopedId({
+      environmentId: state.activeEnvironmentId,
+      id: projectId,
+    });
+    const scopedIds = state.threadScopedIdsByProjectScopedId[projectScopedId] ?? EMPTY_SCOPED_IDS;
+    const sidebarThreadsByScopedId = state.sidebarThreadsByScopedId;
+
+    if (
+      cachedProjectScopedId === projectScopedId &&
+      cachedScopedIds === scopedIds &&
+      cachedSidebarThreadsByScopedId === sidebarThreadsByScopedId
+    ) {
+      return cachedResult;
+    }
+
+    const result = scopedIds
+      .map((scopedId) => sidebarThreadsByScopedId[scopedId]?.id ?? null)
+      .filter((threadId): threadId is ThreadId => threadId !== null);
+
+    cachedProjectScopedId = projectScopedId;
+    cachedScopedIds = scopedIds;
+    cachedSidebarThreadsByScopedId = sidebarThreadsByScopedId;
+    cachedResult = result;
+    return result;
+  };
+};
 
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
   return updateThreadState(state, state.activeEnvironmentId, threadId, (t) => {
