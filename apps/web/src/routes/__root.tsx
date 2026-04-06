@@ -238,6 +238,7 @@ function EventRouter() {
   const bootstrapFromSnapshotRef = useRef<(environmentId: EnvironmentId) => Promise<void>>(
     async () => undefined,
   );
+  const schedulePendingDomainEventFlushRef = useRef<() => void>(() => undefined);
   const serverConfig = useServerConfig();
   const resolveCurrentEnvironmentId = useEffectEvent((): EnvironmentId | null =>
     resolveKnownEnvironmentId({
@@ -250,6 +251,7 @@ function EventRouter() {
     if (!payload) return;
 
     setActiveEnvironmentId(payload.environment.environmentId);
+    schedulePendingDomainEventFlushRef.current();
     migrateLocalSettingsToServer();
     void (async () => {
       await bootstrapFromSnapshotRef.current(payload.environment.environmentId);
@@ -339,6 +341,7 @@ function EventRouter() {
       return;
     }
     setActiveEnvironmentId(serverConfig.environment.environmentId);
+    schedulePendingDomainEventFlushRef.current();
   }, [serverConfig, setActiveEnvironmentId]);
 
   useEffect(() => {
@@ -468,6 +471,7 @@ function EventRouter() {
       flushPendingDomainEventsScheduled = true;
       queueMicrotask(flushPendingDomainEvents);
     };
+    schedulePendingDomainEventFlushRef.current = schedulePendingDomainEventFlush;
 
     const runReplayRecovery = async (reason: "sequence-gap" | "resubscribe"): Promise<void> => {
       if (!recovery.beginReplayRecovery(reason)) {
@@ -620,6 +624,7 @@ function EventRouter() {
       needsProviderInvalidation = false;
       flushPendingDomainEventsScheduled = false;
       pendingDomainEvents.length = 0;
+      schedulePendingDomainEventFlushRef.current = () => undefined;
       queryInvalidationThrottler.cancel();
       unsubDomainEvent();
       unsubTerminalEvent();

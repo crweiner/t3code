@@ -385,6 +385,114 @@ describe("store read model sync", () => {
     );
   });
 
+  it("preserves sidebar index references for untouched environments during snapshot sync", () => {
+    const localThread = makeThread();
+    const remoteProjectId = ProjectId.makeUnsafe("project-remote");
+    const remoteThread = makeThread({
+      id: ThreadId.makeUnsafe("thread-remote"),
+      projectId: remoteProjectId,
+      environmentId: remoteEnvironmentId,
+      title: "Remote thread",
+    });
+    const remoteThreadScopedId = getThreadScopedId({
+      environmentId: remoteEnvironmentId,
+      id: remoteThread.id,
+    });
+    const remoteProjectScopedId = getProjectScopedId({
+      environmentId: remoteEnvironmentId,
+      id: remoteProjectId,
+    });
+    const remoteSidebarSummary = {
+      id: remoteThread.id,
+      environmentId: remoteEnvironmentId,
+      projectId: remoteProjectId,
+      title: remoteThread.title,
+      interactionMode: remoteThread.interactionMode,
+      session: remoteThread.session,
+      createdAt: remoteThread.createdAt,
+      archivedAt: remoteThread.archivedAt,
+      updatedAt: remoteThread.updatedAt,
+      latestTurn: remoteThread.latestTurn,
+      branch: remoteThread.branch,
+      worktreePath: remoteThread.worktreePath,
+      latestUserMessageAt: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+    } as const;
+    const remoteProjectThreadIds = [remoteThreadScopedId];
+    const initialState: AppState = {
+      ...makeState(localThread),
+      projects: [
+        ...makeState(localThread).projects,
+        {
+          id: remoteProjectId,
+          environmentId: remoteEnvironmentId,
+          name: "Remote project",
+          cwd: "/tmp/remote-project",
+          repositoryIdentity: null,
+          defaultModelSelection: {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          scripts: [],
+        },
+      ],
+      threads: [localThread, remoteThread],
+      sidebarThreadsByScopedId: {
+        [getThreadScopedId({
+          environmentId: localEnvironmentId,
+          id: localThread.id,
+        })]: {
+          id: localThread.id,
+          environmentId: localEnvironmentId,
+          projectId: localThread.projectId,
+          title: localThread.title,
+          interactionMode: localThread.interactionMode,
+          session: localThread.session,
+          createdAt: localThread.createdAt,
+          archivedAt: localThread.archivedAt,
+          updatedAt: localThread.updatedAt,
+          latestTurn: localThread.latestTurn,
+          branch: localThread.branch,
+          worktreePath: localThread.worktreePath,
+          latestUserMessageAt: null,
+          hasPendingApprovals: false,
+          hasPendingUserInput: false,
+          hasActionableProposedPlan: false,
+        },
+        [remoteThreadScopedId]: remoteSidebarSummary,
+      },
+      threadScopedIdsByProjectScopedId: {
+        [getProjectScopedId({
+          environmentId: localEnvironmentId,
+          id: localThread.projectId,
+        })]: [
+          getThreadScopedId({
+            environmentId: localEnvironmentId,
+            id: localThread.id,
+          }),
+        ],
+        [remoteProjectScopedId]: remoteProjectThreadIds,
+      },
+    };
+
+    const next = syncServerReadModel(
+      initialState,
+      makeReadModel(
+        makeReadModelThread({
+          title: "Updated local thread",
+        }),
+      ),
+      localEnvironmentId,
+    );
+
+    expect(next.sidebarThreadsByScopedId[remoteThreadScopedId]).toBe(remoteSidebarSummary);
+    expect(next.threadScopedIdsByProjectScopedId[remoteProjectScopedId]).toBe(
+      remoteProjectThreadIds,
+    );
+  });
+
   it("returns a stable thread id array for unchanged project thread inputs", () => {
     const projectId = ProjectId.makeUnsafe("project-1");
     const syncedState = syncServerReadModel(

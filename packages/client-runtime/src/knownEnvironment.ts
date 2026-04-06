@@ -1,4 +1,4 @@
-import type { EnvironmentId, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 
 export interface KnownEnvironmentConnectionTarget {
   readonly type: "ws";
@@ -36,15 +36,4 @@ export function getKnownEnvironmentBaseUrl(
   environment: KnownEnvironment | null | undefined,
 ): string | null {
   return environment?.target.wsUrl ?? null;
-}
-
-export function attachEnvironmentDescriptor(
-  environment: KnownEnvironment,
-  descriptor: ExecutionEnvironmentDescriptor,
-): KnownEnvironment {
-  return {
-    ...environment,
-    environmentId: descriptor.environmentId,
-    label: descriptor.label,
-  };
 }

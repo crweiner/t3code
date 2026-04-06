@@ -365,15 +365,58 @@ function buildThreadScopedIdsByProjectScopedId(
   return threadScopedIdsByProjectScopedId;
 }
 
-function buildSidebarThreadsByScopedId(
-  threads: ReadonlyArray<Thread>,
-): Record<string, SidebarThreadSummary> {
-  return Object.fromEntries(
-    threads.map((thread) => [
-      getThreadScopedId({ environmentId: thread.environmentId, id: thread.id }),
-      buildSidebarThreadSummary(thread),
-    ]),
+function isScopedRecordKeyForEnvironment(
+  scopedRecordKey: string,
+  environmentId: EnvironmentId,
+  kind: "project" | "thread",
+): boolean {
+  return scopedRecordKey.startsWith(`${environmentId}:${kind}:`);
+}
+
+function mergeSidebarThreadsByScopedId(
+  current: AppState["sidebarThreadsByScopedId"],
+  environmentId: EnvironmentId,
+  threadsForEnvironment: ReadonlyArray<Thread>,
+): AppState["sidebarThreadsByScopedId"] {
+  const next = Object.fromEntries(
+    Object.entries(current).filter(
+      ([scopedId]) => !isScopedRecordKeyForEnvironment(scopedId, environmentId, "thread"),
+    ),
   );
+
+  for (const thread of threadsForEnvironment) {
+    const scopedId = getThreadScopedId({
+      environmentId: thread.environmentId,
+      id: thread.id,
+    });
+    const nextSummary = buildSidebarThreadSummary(thread);
+    const previousSummary = current[scopedId];
+    next[scopedId] =
+      sidebarThreadSummariesEqual(previousSummary, nextSummary) && previousSummary !== undefined
+        ? previousSummary
+        : nextSummary;
+  }
+
+  return next;
+}
+
+function mergeThreadScopedIdsByProjectScopedId(
+  current: AppState["threadScopedIdsByProjectScopedId"],
+  environmentId: EnvironmentId,
+  threadsForEnvironment: ReadonlyArray<Thread>,
+): AppState["threadScopedIdsByProjectScopedId"] {
+  const next = Object.fromEntries(
+    Object.entries(current).filter(
+      ([scopedId]) => !isScopedRecordKeyForEnvironment(scopedId, environmentId, "project"),
+    ),
+  );
+  const nextEntries = buildThreadScopedIdsByProjectScopedId(threadsForEnvironment);
+
+  for (const [scopedId, threadScopedIds] of Object.entries(nextEntries)) {
+    next[scopedId] = threadScopedIds;
+  }
+
+  return next;
 }
 
 function checkpointStatusToLatestTurnState(status: "ready" | "missing" | "error") {
@@ -661,8 +704,16 @@ export function syncServerReadModel(
     ...state.threads.filter((thread) => !sameEnvironmentId(thread.environmentId, environmentId)),
     ...threadsForEnvironment,
   ];
-  const sidebarThreadsByScopedId = buildSidebarThreadsByScopedId(threads);
-  const threadScopedIdsByProjectScopedId = buildThreadScopedIdsByProjectScopedId(threads);
+  const sidebarThreadsByScopedId = mergeSidebarThreadsByScopedId(
+    state.sidebarThreadsByScopedId,
+    environmentId,
+    threadsForEnvironment,
+  );
+  const threadScopedIdsByProjectScopedId = mergeThreadScopedIdsByProjectScopedId(
+    state.threadScopedIdsByProjectScopedId,
+    environmentId,
+    threadsForEnvironment,
+  );
   return {
     ...state,
     projects,
@@ -1277,18 +1328,6 @@ export const selectThreadById =
             thread.id === threadId &&
             sameEnvironmentId(thread.environmentId, state.activeEnvironmentId),
         )
-      : undefined;
-
-export const selectSidebarThreadSummaryById =
-  (threadId: ThreadId | null | undefined) =>
-  (state: AppState): SidebarThreadSummary | undefined =>
-    threadId
-      ? state.sidebarThreadsByScopedId[
-          getThreadScopedId({
-            environmentId: state.activeEnvironmentId,
-            id: threadId,
-          })
-        ]
       : undefined;
 
 export const selectThreadIdsByProjectId = (projectId: ProjectId | null | undefined) => {
