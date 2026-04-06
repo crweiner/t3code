@@ -531,7 +531,10 @@ function EventRouter() {
       try {
         const snapshot = await api.orchestration.getSnapshot();
         if (!disposed) {
-          syncServerReadModel(snapshot, environmentId ?? resolveCurrentEnvironmentId());
+          syncServerReadModel(
+            snapshot,
+            environmentId !== undefined ? environmentId : resolveCurrentEnvironmentId(),
+          );
           reconcileSnapshotDerivedState();
           if (recovery.completeSnapshotRecovery(snapshot.snapshotSequence)) {
             void runReplayRecovery("sequence-gap");
