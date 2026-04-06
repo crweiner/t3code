@@ -1,7 +1,11 @@
 import { assert, describe, expect, it, vi } from "vitest";
 
+const { resolvePrimaryEnvironmentBootstrapUrlMock } = vi.hoisted(() => ({
+  resolvePrimaryEnvironmentBootstrapUrlMock: vi.fn(() => "http://bootstrap.test:4321"),
+}));
+
 vi.mock("../environmentBootstrap", () => ({
-  resolvePrimaryEnvironmentBootstrapUrl: vi.fn(() => "http://bootstrap.test:4321"),
+  resolvePrimaryEnvironmentBootstrapUrl: resolvePrimaryEnvironmentBootstrapUrlMock,
 }));
 
 import { isWindowsPlatform } from "./utils";
@@ -33,5 +37,15 @@ describe("resolveServerUrl", () => {
         searchParams: { hello: "world" },
       }),
     ).toBe("wss://override.test:9999/rpc?hello=world");
+  });
+
+  it("does not evaluate the bootstrap resolver when an explicit URL is provided", () => {
+    resolvePrimaryEnvironmentBootstrapUrlMock.mockImplementationOnce(() => {
+      throw new Error("bootstrap unavailable");
+    });
+
+    expect(resolveServerUrl({ url: "https://override.test:9999" })).toBe(
+      "https://override.test:9999/",
+    );
   });
 });

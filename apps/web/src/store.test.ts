@@ -440,7 +440,185 @@ describe("store read model sync", () => {
 
     const next = syncServerReadModel(initialState, readModel);
 
+<<<<<<< HEAD
     expect(projectsOf(next).map((project) => project.id)).toEqual([project1, project2, project3]);
+=======
+    expect(next.projects.map((project) => project.id)).toEqual([project1, project2, project3]);
+  });
+
+  it("replaces only the targeted environment during snapshot sync", () => {
+    const localThread = makeThread();
+    const remoteThread = makeThread({
+      id: ThreadId.makeUnsafe("thread-remote"),
+      projectId: ProjectId.makeUnsafe("project-remote"),
+      environmentId: remoteEnvironmentId,
+      title: "Remote thread",
+    });
+    const initialState: AppState = {
+      ...makeState(localThread),
+      projects: [
+        ...makeState(localThread).projects,
+        {
+          id: ProjectId.makeUnsafe("project-remote"),
+          environmentId: remoteEnvironmentId,
+          name: "Remote project",
+          cwd: "/tmp/remote-project",
+          repositoryIdentity: null,
+          defaultModelSelection: {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          scripts: [],
+        },
+      ],
+      threads: [localThread, remoteThread],
+    };
+
+    const next = syncServerReadModel(
+      initialState,
+      makeReadModel(
+        makeReadModelThread({
+          title: "Updated local thread",
+        }),
+      ),
+      localEnvironmentId,
+    );
+
+    expect(next.projects).toHaveLength(2);
+    expect(next.threads).toHaveLength(2);
+    expect(next.threads.find((thread) => thread.environmentId === remoteEnvironmentId)?.title).toBe(
+      "Remote thread",
+    );
+    expect(next.threads.find((thread) => thread.environmentId === localEnvironmentId)?.title).toBe(
+      "Updated local thread",
+    );
+  });
+
+  it("preserves sidebar index references for untouched environments during snapshot sync", () => {
+    const localThread = makeThread();
+    const remoteProjectId = ProjectId.makeUnsafe("project-remote");
+    const remoteThread = makeThread({
+      id: ThreadId.makeUnsafe("thread-remote"),
+      projectId: remoteProjectId,
+      environmentId: remoteEnvironmentId,
+      title: "Remote thread",
+    });
+    const remoteThreadScopedId = getThreadScopedId({
+      environmentId: remoteEnvironmentId,
+      id: remoteThread.id,
+    });
+    const remoteProjectScopedId = getProjectScopedId({
+      environmentId: remoteEnvironmentId,
+      id: remoteProjectId,
+    });
+    const remoteSidebarSummary = {
+      id: remoteThread.id,
+      environmentId: remoteEnvironmentId,
+      projectId: remoteProjectId,
+      title: remoteThread.title,
+      interactionMode: remoteThread.interactionMode,
+      session: remoteThread.session,
+      createdAt: remoteThread.createdAt,
+      archivedAt: remoteThread.archivedAt,
+      updatedAt: remoteThread.updatedAt,
+      latestTurn: remoteThread.latestTurn,
+      branch: remoteThread.branch,
+      worktreePath: remoteThread.worktreePath,
+      latestUserMessageAt: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+    } as const;
+    const remoteProjectThreadIds = [remoteThreadScopedId];
+    const initialState: AppState = {
+      ...makeState(localThread),
+      projects: [
+        ...makeState(localThread).projects,
+        {
+          id: remoteProjectId,
+          environmentId: remoteEnvironmentId,
+          name: "Remote project",
+          cwd: "/tmp/remote-project",
+          repositoryIdentity: null,
+          defaultModelSelection: {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          scripts: [],
+        },
+      ],
+      threads: [localThread, remoteThread],
+      sidebarThreadsByScopedId: {
+        [getThreadScopedId({
+          environmentId: localEnvironmentId,
+          id: localThread.id,
+        })]: {
+          id: localThread.id,
+          environmentId: localEnvironmentId,
+          projectId: localThread.projectId,
+          title: localThread.title,
+          interactionMode: localThread.interactionMode,
+          session: localThread.session,
+          createdAt: localThread.createdAt,
+          archivedAt: localThread.archivedAt,
+          updatedAt: localThread.updatedAt,
+          latestTurn: localThread.latestTurn,
+          branch: localThread.branch,
+          worktreePath: localThread.worktreePath,
+          latestUserMessageAt: null,
+          hasPendingApprovals: false,
+          hasPendingUserInput: false,
+          hasActionableProposedPlan: false,
+        },
+        [remoteThreadScopedId]: remoteSidebarSummary,
+      },
+      threadScopedIdsByProjectScopedId: {
+        [getProjectScopedId({
+          environmentId: localEnvironmentId,
+          id: localThread.projectId,
+        })]: [
+          getThreadScopedId({
+            environmentId: localEnvironmentId,
+            id: localThread.id,
+          }),
+        ],
+        [remoteProjectScopedId]: remoteProjectThreadIds,
+      },
+    };
+
+    const next = syncServerReadModel(
+      initialState,
+      makeReadModel(
+        makeReadModelThread({
+          title: "Updated local thread",
+        }),
+      ),
+      localEnvironmentId,
+    );
+
+    expect(next.sidebarThreadsByScopedId[remoteThreadScopedId]).toBe(remoteSidebarSummary);
+    expect(next.threadScopedIdsByProjectScopedId[remoteProjectScopedId]).toBe(
+      remoteProjectThreadIds,
+    );
+  });
+
+  it("returns a stable thread id array for unchanged project thread inputs", () => {
+    const projectId = ProjectId.makeUnsafe("project-1");
+    const syncedState = syncServerReadModel(
+      makeState(makeThread()),
+      makeReadModel(makeReadModelThread({ projectId })),
+      localEnvironmentId,
+    );
+    const selectThreadIds = selectThreadIdsByProjectId(projectId);
+
+    const first = selectThreadIds(syncedState);
+    const second = selectThreadIds({
+      ...syncedState,
+      bootstrapComplete: false,
+    });
+
+    expect(first).toBe(second);
+>>>>>>> 412c520d1 (Preserve remote scoped state across snapshot syncs)
   });
 });
 
