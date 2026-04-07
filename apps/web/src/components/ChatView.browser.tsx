@@ -2560,7 +2560,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const newThreadId = threadIdFromPath(newThreadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[newThreadId]).toMatchObject({
+      expect(
+        useComposerDraftStore.getState().draftsByThreadKey[threadKeyFor(newThreadId)],
+      ).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2613,7 +2615,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const newThreadId = threadIdFromPath(newThreadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[newThreadId]).toMatchObject({
+      expect(
+        useComposerDraftStore.getState().draftsByThreadKey[threadKeyFor(newThreadId)],
+      ).toMatchObject({
         modelSelectionByProvider: {
           claudeAgent: {
             provider: "claudeAgent",
@@ -2653,7 +2657,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const newThreadId = threadIdFromPath(newThreadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[newThreadId]).toBe(undefined);
+      expect(useComposerDraftStore.getState().draftsByThreadKey[threadKeyFor(newThreadId)]).toBe(
+        undefined,
+      );
     } finally {
       await mounted.cleanup();
     }
@@ -2695,7 +2701,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const threadId = threadIdFromPath(threadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[threadId]).toMatchObject({
+      expect(
+        useComposerDraftStore.getState().draftsByThreadKey[threadKeyFor(threadId)],
+      ).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2724,7 +2732,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => path === threadPath,
         "New-thread should reuse the existing project draft thread.",
       );
-      expect(useComposerDraftStore.getState().draftsByThreadKey[threadId]).toMatchObject({
+      expect(
+        useComposerDraftStore.getState().draftsByThreadKey[threadKeyFor(threadId)],
+      ).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
