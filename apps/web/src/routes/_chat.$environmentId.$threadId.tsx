@@ -186,9 +186,7 @@ function ChatThreadRouteView() {
     if (!threadRef) {
       return false;
     }
-    return Object.values(store.draftThreadsByThreadKey).some(
-      (draftThread) => draftThread.environmentId === threadRef.environmentId,
-    );
+    return store.hasDraftThreadsInEnvironment(threadRef.environmentId);
   });
   const routeThreadExists = threadExists || draftThreadExists;
   const serverThreadStarted = threadHasStarted(serverThread);

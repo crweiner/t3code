@@ -401,9 +401,7 @@ function EventRouter() {
           deletedAt: null,
           archivedAt: thread.archivedAt,
         })),
-        draftThreadKeys: Object.entries(
-          useComposerDraftStore.getState().draftThreadsByThreadKey,
-        ).map(([draftThreadKey]) => draftThreadKey),
+        draftThreadKeys: useComposerDraftStore.getState().listDraftThreadKeys(),
       });
       removeOrphanedTerminalStates(activeThreadKeys);
     };

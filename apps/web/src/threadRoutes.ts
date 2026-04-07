@@ -1,5 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type { DraftId } from "./composerDraftStore";
 
 export type ThreadRouteTarget =
   | {
@@ -8,7 +9,7 @@ export type ThreadRouteTarget =
     }
   | {
       kind: "draft";
-      threadId: ThreadId;
+      draftId: DraftId;
     };
 
 export function buildThreadRouteParams(ref: ScopedThreadRef): {
@@ -21,10 +22,10 @@ export function buildThreadRouteParams(ref: ScopedThreadRef): {
   };
 }
 
-export function buildDraftThreadRouteParams(threadId: ThreadId): {
-  threadId: ThreadId;
+export function buildDraftThreadRouteParams(draftId: DraftId): {
+  draftId: DraftId;
 } {
-  return { threadId };
+  return { draftId };
 }
 
 export function resolveThreadRouteRef(
@@ -38,21 +39,21 @@ export function resolveThreadRouteRef(
 }
 
 export function resolveThreadRouteTarget(
-  params: Partial<Record<"environmentId" | "threadId", string | undefined>>,
+  params: Partial<Record<"environmentId" | "threadId" | "draftId", string | undefined>>,
 ): ThreadRouteTarget | null {
-  if (!params.threadId) {
-    return null;
-  }
-
-  if (params.environmentId) {
+  if (params.environmentId && params.threadId) {
     return {
       kind: "server",
       threadRef: scopeThreadRef(params.environmentId as EnvironmentId, params.threadId as ThreadId),
     };
   }
 
+  if (!params.draftId) {
+    return null;
+  }
+
   return {
     kind: "draft",
-    threadId: params.threadId as ThreadId,
+    draftId: params.draftId as DraftId,
   };
 }

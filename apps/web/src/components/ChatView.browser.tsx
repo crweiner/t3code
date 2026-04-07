@@ -30,7 +30,7 @@ import { page } from "vitest/browser";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-import { useComposerDraftStore } from "../composerDraftStore";
+import { useComposerDraftStore, DraftId } from "../composerDraftStore";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -480,18 +480,26 @@ function threadKeyFor(threadId: ThreadId): string {
   return scopedThreadKey(threadRefFor(threadId));
 }
 
-function composerDraftFor(threadId: ThreadId) {
+function composerDraftFor(target: string) {
   const { draftsByThreadKey } = useComposerDraftStore.getState();
-  return draftsByThreadKey[threadKeyFor(threadId)] ?? draftsByThreadKey[threadId];
+  return draftsByThreadKey[target] ?? draftsByThreadKey[threadKeyFor(target as ThreadId)];
 }
 
-function threadIdFromPath(pathname: string): ThreadId {
+function draftIdFromPath(pathname: string) {
   const segments = pathname.split("/");
-  const threadId = segments[segments.length - 1];
-  if (!threadId) {
+  const draftId = segments[segments.length - 1];
+  if (!draftId) {
     throw new Error(`Expected thread path, received "${pathname}".`);
   }
-  return threadId as ThreadId;
+  return DraftId.makeUnsafe(draftId);
+}
+
+function draftThreadIdFor(draftId: ReturnType<typeof draftIdFromPath>): ThreadId {
+  const draftSession = useComposerDraftStore.getState().getDraftSession(draftId);
+  if (!draftSession) {
+    throw new Error(`Expected draft session for "${draftId}".`);
+  }
+  return draftSession.threadId;
 }
 
 function serverThreadPath(threadId: ThreadId): string {
@@ -562,6 +570,7 @@ function setDraftThreadWithoutWorktree(): void {
   useComposerDraftStore.setState({
     draftThreadsByThreadKey: {
       [THREAD_KEY]: {
+        threadId: THREAD_ID,
         environmentId: LOCAL_ENVIRONMENT_ID,
         projectId: PROJECT_ID,
         logicalProjectKey: PROJECT_DRAFT_KEY,
@@ -1803,6 +1812,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     useComposerDraftStore.setState({
       draftThreadsByThreadKey: {
         [THREAD_KEY]: {
+          threadId: THREAD_ID,
           environmentId: LOCAL_ENVIRONMENT_ID,
           projectId: PROJECT_ID,
           logicalProjectKey: PROJECT_DRAFT_KEY,
@@ -1881,6 +1891,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     useComposerDraftStore.setState({
       draftThreadsByThreadKey: {
         [THREAD_KEY]: {
+          threadId: THREAD_ID,
           environmentId: LOCAL_ENVIRONMENT_ID,
           projectId: PROJECT_ID,
           logicalProjectKey: PROJECT_DRAFT_KEY,
@@ -1946,6 +1957,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     useComposerDraftStore.setState({
       draftThreadsByThreadKey: {
         [THREAD_KEY]: {
+          threadId: THREAD_ID,
           environmentId: LOCAL_ENVIRONMENT_ID,
           projectId: PROJECT_ID,
           logicalProjectKey: PROJECT_DRAFT_KEY,
@@ -2073,6 +2085,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     useComposerDraftStore.setState({
       draftThreadsByThreadKey: {
         [THREAD_KEY]: {
+          threadId: THREAD_ID,
           environmentId: LOCAL_ENVIRONMENT_ID,
           projectId: PROJECT_ID,
           logicalProjectKey: PROJECT_DRAFT_KEY,
@@ -2175,6 +2188,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     useComposerDraftStore.setState({
       draftThreadsByThreadKey: {
         [THREAD_KEY]: {
+          threadId: THREAD_ID,
           environmentId: LOCAL_ENVIRONMENT_ID,
           projectId: PROJECT_ID,
           logicalProjectKey: PROJECT_DRAFT_KEY,
@@ -2585,7 +2599,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a new draft thread UUID.",
       );
-      const newThreadId = threadIdFromPath(newThreadPath);
+      const newDraftId = draftIdFromPath(newThreadPath);
+      const newThreadId = draftThreadIdFor(newDraftId);
 
       // The composer editor should be present for the new draft thread.
       await waitForComposerEditor();
@@ -2600,9 +2615,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await startPromotedServerThreadViaDomainEvent(newThreadId);
       await vi.waitFor(
         () => {
-          expect(
-            useComposerDraftStore.getState().draftThreadsByThreadKey[threadKeyFor(newThreadId)],
-          ).toBe(undefined);
+          expect(useComposerDraftStore.getState().draftThreadsByThreadKey[newDraftId]).toBe(
+            undefined,
+          );
         },
         { timeout: 8_000, interval: 16 },
       );
@@ -2644,13 +2659,14 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a new draft thread UUID.",
       );
-      const newThreadId = threadIdFromPath(newThreadPath);
+      const newDraftId = draftIdFromPath(newThreadPath);
+      const newThreadId = draftThreadIdFor(newDraftId);
 
       await promoteDraftThreadViaDomainEvent(newThreadId);
 
       await mounted.router.navigate({
-        to: "/draft/$threadId",
-        params: { threadId: newThreadId },
+        to: "/draft/$draftId",
+        params: { draftId: newDraftId },
       });
 
       await waitForURL(
@@ -2699,9 +2715,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a new draft thread UUID.",
       );
-      const newThreadId = threadIdFromPath(newThreadPath);
+      const newDraftId = draftIdFromPath(newThreadPath);
 
-      expect(composerDraftFor(newThreadId)).toMatchObject({
+      expect(composerDraftFor(newDraftId)).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2752,9 +2768,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a new sticky claude draft thread UUID.",
       );
-      const newThreadId = threadIdFromPath(newThreadPath);
+      const newDraftId = draftIdFromPath(newThreadPath);
 
-      expect(composerDraftFor(newThreadId)).toMatchObject({
+      expect(composerDraftFor(newDraftId)).toMatchObject({
         modelSelectionByProvider: {
           claudeAgent: {
             provider: "claudeAgent",
@@ -2792,9 +2808,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a new draft thread UUID.",
       );
-      const newThreadId = threadIdFromPath(newThreadPath);
+      const newDraftId = draftIdFromPath(newThreadPath);
 
-      expect(composerDraftFor(newThreadId)).toBe(undefined);
+      expect(composerDraftFor(newDraftId)).toBe(undefined);
     } finally {
       await mounted.cleanup();
     }
@@ -2834,9 +2850,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a sticky draft thread UUID.",
       );
-      const threadId = threadIdFromPath(threadPath);
+      const draftId = draftIdFromPath(threadPath);
 
-      expect(composerDraftFor(threadId)).toMatchObject({
+      expect(composerDraftFor(draftId)).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2849,7 +2865,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         activeProvider: "codex",
       });
 
-      useComposerDraftStore.getState().setModelSelection(threadRefFor(threadId), {
+      useComposerDraftStore.getState().setModelSelection(draftId, {
         provider: "codex",
         model: "gpt-5.4",
         options: {
@@ -2865,7 +2881,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => path === threadPath,
         "New-thread should reuse the existing project draft thread.",
       );
-      expect(composerDraftFor(threadId)).toMatchObject({
+      expect(composerDraftFor(draftId)).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2972,7 +2988,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => UUID_ROUTE_RE.test(path),
         "Route should have changed to a promoted draft thread UUID.",
       );
-      const promotedThreadId = threadIdFromPath(promotedThreadPath);
+      const promotedDraftId = draftIdFromPath(promotedThreadPath);
+      const promotedThreadId = draftThreadIdFor(promotedDraftId);
 
       await promoteDraftThreadViaDomainEvent(promotedThreadId);
 

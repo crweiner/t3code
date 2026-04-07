@@ -8,7 +8,7 @@ import {
   type DraftThreadState,
   useComposerDraftStore,
 } from "../composerDraftStore";
-import { newThreadId } from "../lib/utils";
+import { newDraftId, newThreadId } from "../lib/utils";
 import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import { deriveLogicalProjectKey } from "../logicalProject";
 import { selectProjectsAcrossEnvironments, useStore } from "../store";
@@ -33,7 +33,7 @@ export function useHandleNewThread() {
     routeTarget
       ? routeTarget.kind === "server"
         ? getDraftThread(routeTarget.threadRef)
-        : getDraftThread(routeTarget.threadId)
+        : useComposerDraftStore.getState().getDraftSession(routeTarget.draftId)
       : null,
   );
   const orderedProjects = useMemo(() => {
@@ -54,8 +54,8 @@ export function useHandleNewThread() {
       },
     ): Promise<void> => {
       const {
-        getDraftThreadByLogicalProjectKey,
-        getDraftThread,
+        getDraftSessionByLogicalProjectKey,
+        getDraftSession,
         applyStickyState,
         setDraftThreadContext,
         setLogicalProjectDraftThreadId,
@@ -71,46 +71,31 @@ export function useHandleNewThread() {
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
-      const storedDraftThread = getDraftThreadByLogicalProjectKey(logicalProjectKey);
+      const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       const latestActiveDraftThread: DraftThreadState | null = routeTarget
         ? routeTarget.kind === "server"
           ? getDraftThread(routeTarget.threadRef)
-          : getDraftThread(routeTarget.threadId)
+          : getDraftSession(routeTarget.draftId)
         : null;
       if (storedDraftThread) {
         return (async () => {
           if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
-            setDraftThreadContext(storedDraftThread.threadRef, {
+            setDraftThreadContext(storedDraftThread.draftId, {
               ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
               ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
               ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
             });
           }
-          setLogicalProjectDraftThreadId(
-            logicalProjectKey,
-            projectRef,
-            storedDraftThread.threadRef,
-          );
-          if (
-            routeTarget?.kind === "draft" &&
-            routeTarget.threadId === storedDraftThread.threadId
-          ) {
+          setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, storedDraftThread.draftId, {
+            threadId: storedDraftThread.threadId,
+          });
+          if (routeTarget?.kind === "draft" && routeTarget.draftId === storedDraftThread.draftId) {
             return;
           }
-          if (storedDraftThread.isLocalDraft) {
-            await navigate({
-              to: "/draft/$threadId",
-              params: { threadId: storedDraftThread.threadId },
-            });
-          } else {
-            await navigate({
-              to: "/$environmentId/$threadId",
-              params: {
-                environmentId: storedDraftThread.environmentId,
-                threadId: storedDraftThread.threadId,
-              },
-            });
-          }
+          await navigate({
+            to: "/draft/$draftId",
+            params: { draftId: storedDraftThread.draftId },
+          });
         })();
       }
 
@@ -120,13 +105,14 @@ export function useHandleNewThread() {
         latestActiveDraftThread.logicalProjectKey === logicalProjectKey
       ) {
         if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
-          setDraftThreadContext(routeTarget.threadId, {
+          setDraftThreadContext(routeTarget.draftId, {
             ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
             ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
             ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
           });
         }
-        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, routeTarget.threadId, {
+        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, routeTarget.draftId, {
+          threadId: latestActiveDraftThread.threadId,
           createdAt: latestActiveDraftThread.createdAt,
           runtimeMode: latestActiveDraftThread.runtimeMode,
           interactionMode: latestActiveDraftThread.interactionMode,
@@ -137,25 +123,27 @@ export function useHandleNewThread() {
         return Promise.resolve();
       }
 
+      const draftId = newDraftId();
       const threadId = newThreadId();
       const createdAt = new Date().toISOString();
       return (async () => {
-        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, threadId, {
+        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
+          threadId,
           createdAt,
           branch: options?.branch ?? null,
           worktreePath: options?.worktreePath ?? null,
           envMode: options?.envMode ?? "local",
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
-        applyStickyState(threadId);
+        applyStickyState(draftId);
 
         await navigate({
-          to: "/draft/$threadId",
-          params: { threadId },
+          to: "/draft/$draftId",
+          params: { draftId },
         });
       })();
     },
-    [navigate, projects, routeTarget],
+    [getDraftThread, navigate, projects, routeTarget],
   );
 
   return {

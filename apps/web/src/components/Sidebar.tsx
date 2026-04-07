@@ -1318,7 +1318,7 @@ export default function Sidebar() {
           scopeProjectRef(project.environmentId, project.id),
         );
         if (projectDraftThread) {
-          clearComposerDraftForThread(projectDraftThread.threadRef);
+          clearComposerDraftForThread(projectDraftThread.draftId);
         }
         clearProjectDraftThreadId(scopeProjectRef(project.environmentId, project.id));
         const projectApi = readEnvironmentApi(project.environmentId);

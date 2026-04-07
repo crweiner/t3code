@@ -13,6 +13,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ServerProvider,
+  type ScopedThreadRef,
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
@@ -123,7 +124,7 @@ import {
   projectScriptIdFromCommand,
 } from "~/projectScripts";
 import { SidebarTrigger } from "./ui/sidebar";
-import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
+import { newCommandId, newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import {
   getProviderModelCapabilities,
   getProviderModels,
@@ -141,6 +142,7 @@ import {
   useComposerDraftStore,
   useEffectiveComposerModelState,
   useComposerThreadDraft,
+  type DraftId,
 } from "../composerDraftStore";
 import {
   appendTerminalContextsToPrompt,
@@ -379,11 +381,19 @@ const terminalContextIdListsEqual = (
 ): boolean =>
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
-interface ChatViewProps {
-  environmentId: EnvironmentId;
-  threadId: ThreadId;
-  routeKind: "server" | "draft";
-}
+type ChatViewProps =
+  | {
+      environmentId: EnvironmentId;
+      threadId: ThreadId;
+      routeKind: "server";
+      draftId?: never;
+    }
+  | {
+      environmentId: EnvironmentId;
+      threadId: ThreadId;
+      routeKind: "draft";
+      draftId: DraftId;
+    };
 
 interface TerminalLaunchContext {
   threadId: ThreadId;
@@ -633,11 +643,15 @@ function PersistentThreadTerminalDrawer({
   );
 }
 
-export default function ChatView({ environmentId, threadId, routeKind }: ChatViewProps) {
+export default function ChatView(props: ChatViewProps) {
+  const { environmentId, threadId, routeKind } = props;
+  const draftId = routeKind === "draft" ? props.draftId : null;
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
+  const composerDraftTarget: ScopedThreadRef | DraftId =
+    routeKind === "server" ? routeThreadRef : props.draftId;
   const serverThread = useStore(
     useMemo(
       () => createThreadSelectorByRef(routeKind === "server" ? routeThreadRef : null),
@@ -662,7 +676,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
     select: (params) => parseDiffRouteSearch(params),
   });
   const { resolvedTheme } = useTheme();
-  const composerDraft = useComposerThreadDraft(routeKind === "server" ? routeThreadRef : threadId);
+  const composerDraft = useComposerThreadDraft(composerDraftTarget);
   const prompt = composerDraft.prompt;
   const composerImages = composerDraft.images;
   const composerTerminalContexts = composerDraft.terminalContexts;
@@ -705,17 +719,20 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   );
   const clearComposerDraftContent = useComposerDraftStore((store) => store.clearComposerContent);
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
-  const getDraftThreadByLogicalProjectKey = useComposerDraftStore(
-    (store) => store.getDraftThreadByLogicalProjectKey,
+  const getDraftSessionByLogicalProjectKey = useComposerDraftStore(
+    (store) => store.getDraftSessionByLogicalProjectKey,
   );
-  const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
+  const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
+  const getDraftSession = useComposerDraftStore((store) => store.getDraftSession);
   const setLogicalProjectDraftThreadId = useComposerDraftStore(
     (store) => store.setLogicalProjectDraftThreadId,
   );
   const draftThread = useComposerDraftStore((store) =>
     routeKind === "server"
-      ? store.getDraftThreadByRef(routeThreadRef)
-      : store.getDraftThread(threadId),
+      ? store.getDraftSessionByRef(routeThreadRef)
+      : draftId
+        ? store.getDraftSession(draftId)
+        : null,
   );
   const promptRef = useRef(prompt);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -725,8 +742,8 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
   optimisticUserMessagesRef.current = optimisticUserMessages;
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>(composerTerminalContexts);
-  const [localDraftErrorsByThreadId, setLocalDraftErrorsByThreadId] = useState<
-    Record<ThreadId, string | null>
+  const [localDraftErrorsByDraftId, setLocalDraftErrorsByDraftId] = useState<
+    Record<string, string | null>
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
@@ -836,40 +853,43 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   );
   const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
   const draftThreadKeys = useMemo(
-    () => Object.keys(draftThreadsByThreadKey),
+    () =>
+      Object.values(draftThreadsByThreadKey).map((draftThread) =>
+        scopedThreadKey(scopeThreadRef(draftThread.environmentId, draftThread.threadId)),
+      ),
     [draftThreadsByThreadKey],
   );
   const [mountedTerminalThreadKeys, setMountedTerminalThreadKeys] = useState<string[]>([]);
 
   const setPrompt = useCallback(
     (nextPrompt: string) => {
-      setComposerDraftPrompt(routeThreadRef, nextPrompt);
+      setComposerDraftPrompt(composerDraftTarget, nextPrompt);
     },
-    [routeThreadRef, setComposerDraftPrompt],
+    [composerDraftTarget, setComposerDraftPrompt],
   );
   const addComposerImage = useCallback(
     (image: ComposerImageAttachment) => {
-      addComposerDraftImage(routeThreadRef, image);
+      addComposerDraftImage(composerDraftTarget, image);
     },
-    [addComposerDraftImage, routeThreadRef],
+    [addComposerDraftImage, composerDraftTarget],
   );
   const addComposerImagesToDraft = useCallback(
     (images: ComposerImageAttachment[]) => {
-      addComposerDraftImages(routeThreadRef, images);
+      addComposerDraftImages(composerDraftTarget, images);
     },
-    [addComposerDraftImages, routeThreadRef],
+    [addComposerDraftImages, composerDraftTarget],
   );
   const addComposerTerminalContextsToDraft = useCallback(
     (contexts: TerminalContextDraft[]) => {
-      addComposerDraftTerminalContexts(routeThreadRef, contexts);
+      addComposerDraftTerminalContexts(composerDraftTarget, contexts);
     },
-    [addComposerDraftTerminalContexts, routeThreadRef],
+    [addComposerDraftTerminalContexts, composerDraftTarget],
   );
   const removeComposerImageFromDraft = useCallback(
     (imageId: string) => {
-      removeComposerDraftImage(routeThreadRef, imageId);
+      removeComposerDraftImage(composerDraftTarget, imageId);
     },
-    [removeComposerDraftImage, routeThreadRef],
+    [composerDraftTarget, removeComposerDraftImage],
   );
   const removeComposerTerminalContextFromDraft = useCallback(
     (contextId: string) => {
@@ -882,7 +902,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
       const nextPrompt = removeInlineTerminalContextPlaceholder(promptRef.current, contextIndex);
       promptRef.current = nextPrompt.prompt;
       setPrompt(nextPrompt.prompt);
-      removeComposerDraftTerminalContext(routeThreadRef, contextId);
+      removeComposerDraftTerminalContext(composerDraftTarget, contextId);
       setComposerCursor(nextPrompt.cursor);
       setComposerTrigger(
         detectComposerTrigger(
@@ -891,7 +911,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
         ),
       );
     },
-    [composerTerminalContexts, removeComposerDraftTerminalContext, routeThreadRef, setPrompt],
+    [composerDraftTarget, composerTerminalContexts, removeComposerDraftTerminalContext, setPrompt],
   );
 
   const fallbackDraftProjectRef = draftThread
@@ -901,7 +921,9 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
     useMemo(() => createProjectSelectorByRef(fallbackDraftProjectRef), [fallbackDraftProjectRef]),
   );
   const localDraftError =
-    routeKind === "server" && serverThread ? null : (localDraftErrorsByThreadId[threadId] ?? null);
+    routeKind === "server" && serverThread
+      ? null
+      : ((draftId ? localDraftErrorsByDraftId[draftId] : null) ?? null);
   const localDraftThread = useMemo(
     () =>
       draftThread
@@ -1002,69 +1024,69 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
       }
       const activeProjectRef = scopeProjectRef(activeProject.environmentId, activeProject.id);
       const logicalProjectKey = deriveLogicalProjectKey(activeProject);
-      const storedDraftThread = getDraftThreadByLogicalProjectKey(logicalProjectKey);
-      if (storedDraftThread) {
-        setDraftThreadContext(storedDraftThread.threadRef, input);
+      const storedDraftSession = getDraftSessionByLogicalProjectKey(logicalProjectKey);
+      if (storedDraftSession) {
+        setDraftThreadContext(storedDraftSession.draftId, input);
         setLogicalProjectDraftThreadId(
           logicalProjectKey,
           activeProjectRef,
-          storedDraftThread.isLocalDraft ? storedDraftThread.threadId : storedDraftThread.threadRef,
-          input,
+          storedDraftSession.draftId,
+          {
+            threadId: storedDraftSession.threadId,
+            ...input,
+          },
         );
-        if (storedDraftThread.threadId !== threadId) {
-          if (storedDraftThread.isLocalDraft) {
-            await navigate({
-              to: "/draft/$threadId",
-              params: buildDraftThreadRouteParams(storedDraftThread.threadId),
-            });
-          } else {
-            await navigate({
-              to: "/$environmentId/$threadId",
-              params: {
-                environmentId: activeProject.environmentId,
-                threadId: storedDraftThread.threadId,
-              },
-            });
-          }
+        if (routeKind !== "draft" || draftId !== storedDraftSession.draftId) {
+          await navigate({
+            to: "/draft/$draftId",
+            params: buildDraftThreadRouteParams(storedDraftSession.draftId),
+          });
         }
-        return storedDraftThread.threadId;
+        return storedDraftSession.threadId;
       }
 
-      const activeDraftThread = routeKind === "draft" ? getDraftThread(threadId) : null;
-      if (!isServerThread && activeDraftThread?.logicalProjectKey === logicalProjectKey) {
-        setDraftThreadContext(threadId, input);
-        setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, threadId, {
-          createdAt: activeDraftThread.createdAt,
-          runtimeMode: activeDraftThread.runtimeMode,
-          interactionMode: activeDraftThread.interactionMode,
+      const activeDraftSession = routeKind === "draft" && draftId ? getDraftSession(draftId) : null;
+      if (
+        !isServerThread &&
+        activeDraftSession?.logicalProjectKey === logicalProjectKey &&
+        draftId
+      ) {
+        setDraftThreadContext(draftId, input);
+        setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, draftId, {
+          threadId: activeDraftSession.threadId,
+          createdAt: activeDraftSession.createdAt,
+          runtimeMode: activeDraftSession.runtimeMode,
+          interactionMode: activeDraftSession.interactionMode,
           ...input,
         });
-        return threadId;
+        return activeDraftSession.threadId;
       }
 
+      const nextDraftId = newDraftId();
       const nextThreadId = newThreadId();
-      setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, nextThreadId, {
+      setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, nextDraftId, {
+        threadId: nextThreadId,
         createdAt: new Date().toISOString(),
         runtimeMode: DEFAULT_RUNTIME_MODE,
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
       await navigate({
-        to: "/draft/$threadId",
-        params: buildDraftThreadRouteParams(nextThreadId),
+        to: "/draft/$draftId",
+        params: buildDraftThreadRouteParams(nextDraftId),
       });
       return nextThreadId;
     },
     [
       activeProject,
-      getDraftThread,
-      getDraftThreadByLogicalProjectKey,
+      draftId,
+      getDraftSession,
+      getDraftSessionByLogicalProjectKey,
       isServerThread,
       navigate,
       routeKind,
       setDraftThreadContext,
       setLogicalProjectDraftThreadId,
-      threadId,
     ],
   );
 
@@ -1114,7 +1136,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   );
   const selectedProvider: ProviderKind = lockedProvider ?? unlockedSelectedProvider;
   const { modelOptions: composerModelOptions, selectedModel } = useEffectiveComposerModelState({
-    threadRef: routeThreadRef,
+    threadRef: composerDraftTarget,
     providers: providerStatuses,
     selectedProvider,
     threadModelSelection: activeThread?.modelSelection,
@@ -1732,17 +1754,18 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
         setStoreThreadError(targetThreadId, nextError);
         return;
       }
-      setLocalDraftErrorsByThreadId((existing) => {
-        if ((existing[targetThreadId] ?? null) === nextError) {
+      const localDraftErrorKey = draftId ?? targetThreadId;
+      setLocalDraftErrorsByDraftId((existing) => {
+        if ((existing[localDraftErrorKey] ?? null) === nextError) {
           return existing;
         }
         return {
           ...existing,
-          [targetThreadId]: nextError,
+          [localDraftErrorKey]: nextError,
         };
       });
     },
-    [routeThreadRef, serverThread, setStoreThreadError],
+    [draftId, routeThreadRef, serverThread, setStoreThreadError],
   );
 
   const focusComposer = useCallback(() => {
@@ -2097,9 +2120,9 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   const handleRuntimeModeChange = useCallback(
     (mode: RuntimeMode) => {
       if (mode === runtimeMode) return;
-      setComposerDraftRuntimeMode(routeThreadRef, mode);
+      setComposerDraftRuntimeMode(composerDraftTarget, mode);
       if (isLocalDraftThread) {
-        setDraftThreadContext(routeThreadRef, { runtimeMode: mode });
+        setDraftThreadContext(composerDraftTarget, { runtimeMode: mode });
       }
       scheduleComposerFocus();
     },
@@ -2107,18 +2130,18 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
       isLocalDraftThread,
       runtimeMode,
       scheduleComposerFocus,
+      composerDraftTarget,
       setComposerDraftRuntimeMode,
       setDraftThreadContext,
-      routeThreadRef,
     ],
   );
 
   const handleInteractionModeChange = useCallback(
     (mode: ProviderInteractionMode) => {
       if (mode === interactionMode) return;
-      setComposerDraftInteractionMode(routeThreadRef, mode);
+      setComposerDraftInteractionMode(composerDraftTarget, mode);
       if (isLocalDraftThread) {
-        setDraftThreadContext(routeThreadRef, { interactionMode: mode });
+        setDraftThreadContext(composerDraftTarget, { interactionMode: mode });
       }
       scheduleComposerFocus();
     },
@@ -2126,9 +2149,9 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
       interactionMode,
       isLocalDraftThread,
       scheduleComposerFocus,
+      composerDraftTarget,
       setComposerDraftInteractionMode,
       setDraftThreadContext,
-      routeThreadRef,
     ],
   );
   const toggleInteractionMode = useCallback(() => {
@@ -2534,18 +2557,17 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
     dragDepthRef.current = 0;
     setIsDragOverComposer(false);
     setExpandedImage(null);
-  }, [resetLocalDispatch, threadId]);
+  }, [draftId, resetLocalDispatch, threadId]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (composerImages.length === 0) {
-        clearComposerDraftPersistedAttachments(routeThreadRef);
+        clearComposerDraftPersistedAttachments(composerDraftTarget);
         return;
       }
       const getPersistedAttachmentsForThread = () =>
-        useComposerDraftStore.getState().draftsByThreadKey[scopedThreadKey(routeThreadRef)]
-          ?.persistedAttachments ?? [];
+        getComposerDraft(composerDraftTarget)?.persistedAttachments ?? [];
       try {
         const currentPersistedAttachments = getPersistedAttachmentsForThread();
         const existingPersistedById = new Map(
@@ -2576,7 +2598,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
           return;
         }
         // Stage attachments in persisted draft state first so persist middleware can write them.
-        syncComposerDraftPersistedAttachments(routeThreadRef, serialized);
+        syncComposerDraftPersistedAttachments(composerDraftTarget, serialized);
       } catch {
         const currentImageIds = new Set(composerImages.map((image) => image.id));
         const fallbackPersistedAttachments = getPersistedAttachmentsForThread();
@@ -2590,16 +2612,17 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
         if (cancelled) {
           return;
         }
-        syncComposerDraftPersistedAttachments(routeThreadRef, fallbackAttachments);
+        syncComposerDraftPersistedAttachments(composerDraftTarget, fallbackAttachments);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [
+    composerDraftTarget,
     clearComposerDraftPersistedAttachments,
     composerImages,
-    routeThreadRef,
+    getComposerDraft,
     syncComposerDraftPersistedAttachments,
   ]);
 
@@ -3759,7 +3782,8 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   );
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,
-    threadRef: routeThreadRef,
+    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+    ...(routeKind === "draft" && draftId ? { draftId } : {}),
     model: selectedModel,
     models: selectedProviderModels,
     modelOptions: composerModelOptions?.[selectedProvider],
@@ -3768,7 +3792,8 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   });
   const providerTraitsPicker = renderProviderTraitsPicker({
     provider: selectedProvider,
-    threadRef: routeThreadRef,
+    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+    ...(routeKind === "draft" && draftId ? { draftId } : {}),
     model: selectedModel,
     models: selectedProviderModels,
     modelOptions: composerModelOptions?.[selectedProvider],
@@ -3778,11 +3803,11 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (isLocalDraftThread) {
-        setDraftThreadContext(routeThreadRef, { envMode: mode });
+        setDraftThreadContext(composerDraftTarget, { envMode: mode });
       }
       scheduleComposerFocus();
     },
-    [isLocalDraftThread, routeThreadRef, scheduleComposerFocus, setDraftThreadContext],
+    [composerDraftTarget, isLocalDraftThread, scheduleComposerFocus, setDraftThreadContext],
   );
 
   const applyPromptReplacement = useCallback(
@@ -4593,6 +4618,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
             <BranchToolbar
               environmentId={activeThread.environmentId}
               threadId={activeThread.id}
+              {...(routeKind === "draft" && draftId ? { draftId } : {})}
               onEnvModeChange={onEnvModeChange}
               envLocked={envLocked}
               onComposerFocusRequest={scheduleComposerFocus}

@@ -1,9 +1,8 @@
-import { ThreadId } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 import ChatView from "../components/ChatView";
 import { threadHasStarted } from "../components/ChatView.logic";
-import { useComposerDraftStore } from "../composerDraftStore";
+import { useComposerDraftStore, DraftId } from "../composerDraftStore";
 import { SidebarInset } from "../components/ui/sidebar";
 import { createThreadSelectorAcrossEnvironments } from "../storeSelectors";
 import { useStore } from "../store";
@@ -11,18 +10,21 @@ import { buildThreadRouteParams } from "../threadRoutes";
 
 function DraftChatThreadRouteView() {
   const navigate = useNavigate();
-  const { threadId: rawThreadId } = Route.useParams();
-  const threadId = rawThreadId as ThreadId;
-  const draftThread = useComposerDraftStore((store) => store.getDraftThread(threadId));
+  const { draftId: rawDraftId } = Route.useParams();
+  const draftId = DraftId.makeUnsafe(rawDraftId);
+  const draftSession = useComposerDraftStore((store) => store.getDraftSession(draftId));
   const serverThread = useStore(
-    useMemo(() => createThreadSelectorAcrossEnvironments(threadId), [threadId]),
+    useMemo(
+      () => createThreadSelectorAcrossEnvironments(draftSession?.threadId ?? null),
+      [draftSession?.threadId],
+    ),
   );
   const serverThreadStarted = threadHasStarted(serverThread);
   const canonicalThreadRef = useMemo(
     () =>
-      draftThread?.promotedTo
+      draftSession?.promotedTo
         ? serverThreadStarted
-          ? draftThread.promotedTo
+          ? draftSession.promotedTo
           : null
         : serverThread
           ? {
@@ -30,7 +32,7 @@ function DraftChatThreadRouteView() {
               threadId: serverThread.id,
             }
           : null,
-    [draftThread?.promotedTo, serverThread, serverThreadStarted],
+    [draftSession?.promotedTo, serverThread, serverThreadStarted],
   );
 
   useEffect(() => {
@@ -45,11 +47,11 @@ function DraftChatThreadRouteView() {
   }, [canonicalThreadRef, navigate]);
 
   useEffect(() => {
-    if (draftThread || canonicalThreadRef) {
+    if (draftSession || canonicalThreadRef) {
       return;
     }
     void navigate({ to: "/", replace: true });
-  }, [canonicalThreadRef, draftThread, navigate]);
+  }, [canonicalThreadRef, draftSession, navigate]);
 
   if (canonicalThreadRef) {
     return (
@@ -63,17 +65,22 @@ function DraftChatThreadRouteView() {
     );
   }
 
-  if (!draftThread) {
+  if (!draftSession) {
     return null;
   }
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-      <ChatView environmentId={draftThread.environmentId} threadId={threadId} routeKind="draft" />
+      <ChatView
+        draftId={draftId}
+        environmentId={draftSession.environmentId}
+        threadId={draftSession.threadId}
+        routeKind="draft"
+      />
     </SidebarInset>
   );
 }
 
-export const Route = createFileRoute("/_chat/draft/$threadId")({
+export const Route = createFileRoute("/_chat/draft/$draftId")({
   component: DraftChatThreadRouteView,
 });

@@ -3,9 +3,9 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { FolderIcon, GitForkIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
+import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { readEnvironmentApi } from "../environmentApi";
 import { newCommandId } from "../lib/utils";
-import { useComposerDraftStore } from "../composerDraftStore";
 import { useStore } from "../store";
 import { createProjectSelectorByRef, createThreadSelectorByRef } from "../storeSelectors";
 import {
@@ -24,6 +24,7 @@ const envModeItems = [
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  draftId?: DraftId;
   onEnvModeChange: (mode: EnvMode) => void;
   envLocked: boolean;
   onCheckoutPullRequestRequest?: (reference: string) => void;
@@ -33,6 +34,7 @@ interface BranchToolbarProps {
 export default function BranchToolbar({
   environmentId,
   threadId,
+  draftId,
   onEnvModeChange,
   envLocked,
   onCheckoutPullRequestRequest,
@@ -100,7 +102,10 @@ export default function BranchToolbar({
         currentWorktreePath: activeWorktreePath,
         effectiveEnvMode,
       });
-      setDraftThreadContext(threadRef, {
+      if (!draftId) {
+        return;
+      }
+      setDraftThreadContext(draftId, {
         branch,
         worktreePath,
         envMode: nextDraftEnvMode,
@@ -115,9 +120,9 @@ export default function BranchToolbar({
       hasServerThread,
       setThreadBranchAction,
       setDraftThreadContext,
+      draftId,
       environmentId,
       effectiveEnvMode,
-      threadRef,
     ],
   );
 

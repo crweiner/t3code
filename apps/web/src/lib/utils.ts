@@ -5,6 +5,7 @@ import { twMerge } from "tailwind-merge";
 import * as Random from "effect/Random";
 import * as Effect from "effect/Effect";
 import { resolvePrimaryEnvironmentBootstrapUrl } from "../environmentBootstrap";
+import { DraftId } from "../composerDraftStore";
 
 export function cn(...inputs: CxOptions) {
   return twMerge(cx(inputs));
@@ -34,6 +35,8 @@ export const newCommandId = (): CommandId => CommandId.makeUnsafe(randomUUID());
 export const newProjectId = (): ProjectId => ProjectId.makeUnsafe(randomUUID());
 
 export const newThreadId = (): ThreadId => ThreadId.makeUnsafe(randomUUID());
+
+export const newDraftId = (): DraftId => DraftId.makeUnsafe(randomUUID());
 
 export const newMessageId = (): MessageId => MessageId.makeUnsafe(randomUUID());
 

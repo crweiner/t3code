@@ -5,7 +5,6 @@ import {
   type ProviderModelOptions,
   type ScopedThreadRef,
   type ServerProviderModel,
-  type ThreadId,
 } from "@t3tools/contracts";
 import {
   applyClaudePromptEffortPrefix,
@@ -29,7 +28,7 @@ import {
   MenuSeparator as MenuDivider,
   MenuTrigger,
 } from "../ui/menu";
-import { useComposerDraftStore } from "../../composerDraftStore";
+import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 
@@ -37,7 +36,7 @@ type ProviderOptions = ProviderModelOptions[ProviderKind];
 type TraitsPersistence =
   | {
       threadRef?: ScopedThreadRef;
-      threadId?: ThreadId;
+      draftId?: DraftId;
       onModelOptionsChange?: never;
     }
   | {
@@ -169,7 +168,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         persistence.onModelOptionsChange(nextOptions);
         return;
       }
-      const threadTarget = persistence.threadRef ?? persistence.threadId;
+      const threadTarget = persistence.threadRef ?? persistence.draftId;
       if (!threadTarget) {
         return;
       }

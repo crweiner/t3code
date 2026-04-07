@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { ThreadId } from "@t3tools/contracts";
+import { DraftId } from "./composerDraftStore";
 
 import {
   buildDraftThreadRouteParams,
@@ -34,9 +35,9 @@ describe("threadRoutes", () => {
     expect(resolveThreadRouteRef({ threadId: "thread-1" })).toBeNull();
   });
 
-  it("builds canonical draft route params from a thread id", () => {
-    expect(buildDraftThreadRouteParams(ThreadId.makeUnsafe("thread-1"))).toEqual({
-      threadId: "thread-1",
+  it("builds canonical draft route params from a draft id", () => {
+    expect(buildDraftThreadRouteParams(DraftId.makeUnsafe("draft-1"))).toEqual({
+      draftId: "draft-1",
     });
   });
 
@@ -56,11 +57,11 @@ describe("threadRoutes", () => {
 
     expect(
       resolveThreadRouteTarget({
-        threadId: "thread-1",
+        draftId: "draft-1",
       }),
     ).toEqual({
       kind: "draft",
-      threadId: "thread-1",
+      draftId: "draft-1",
     });
   });
 });
