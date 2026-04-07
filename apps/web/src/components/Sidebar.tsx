@@ -2146,7 +2146,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           <SidebarMenu ref={attachProjectListAutoAnimateRef}>
             {sortedProjects.map((project) => (
               <SidebarProjectListRow
-                key={project.id}
+                key={project.projectKey}
                 project={project}
                 isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
                 activeRouteThreadKey={

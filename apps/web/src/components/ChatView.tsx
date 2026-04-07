@@ -4004,7 +4004,7 @@ export default function ChatView(props: ChatViewProps) {
       setPrompt(nextPrompt);
       if (!terminalContextIdListsEqual(composerTerminalContexts, terminalContextIds)) {
         setComposerDraftTerminalContexts(
-          routeThreadRef,
+          composerDraftTarget,
           syncTerminalContextsByIds(composerTerminalContexts, terminalContextIds),
         );
       }
@@ -4019,8 +4019,8 @@ export default function ChatView(props: ChatViewProps) {
       composerTerminalContexts,
       onChangeActivePendingUserInputCustomAnswer,
       setPrompt,
+      composerDraftTarget,
       setComposerDraftTerminalContexts,
-      routeThreadRef,
     ],
   );
 

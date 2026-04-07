@@ -53,6 +53,13 @@ type ProviderRegistryEntry = {
   }) => ReactNode;
 };
 
+function hasComposerTraitsTarget(input: {
+  threadRef: ScopedThreadRef | undefined;
+  draftId: DraftId | undefined;
+}): boolean {
+  return input.threadRef !== undefined || input.draftId !== undefined;
+}
+
 function getProviderStateFromCapabilities(
   input: ComposerProviderStateInput,
 ): ComposerProviderState {
@@ -104,18 +111,19 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       modelOptions,
       prompt,
       onPromptChange,
-    }) => (
-      <TraitsMenuContent
-        provider="codex"
-        models={models}
-        {...(threadRef ? { threadRef } : {})}
-        {...(draftId ? { draftId } : {})}
-        model={model}
-        modelOptions={modelOptions}
-        prompt={prompt}
-        onPromptChange={onPromptChange}
-      />
-    ),
+    }) =>
+      !hasComposerTraitsTarget({ threadRef, draftId }) ? null : (
+        <TraitsMenuContent
+          provider="codex"
+          models={models}
+          {...(threadRef ? { threadRef } : {})}
+          {...(draftId ? { draftId } : {})}
+          model={model}
+          modelOptions={modelOptions}
+          prompt={prompt}
+          onPromptChange={onPromptChange}
+        />
+      ),
     renderTraitsPicker: ({
       threadRef,
       draftId,
@@ -124,18 +132,19 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       modelOptions,
       prompt,
       onPromptChange,
-    }) => (
-      <TraitsPicker
-        provider="codex"
-        models={models}
-        {...(threadRef ? { threadRef } : {})}
-        {...(draftId ? { draftId } : {})}
-        model={model}
-        modelOptions={modelOptions}
-        prompt={prompt}
-        onPromptChange={onPromptChange}
-      />
-    ),
+    }) =>
+      !hasComposerTraitsTarget({ threadRef, draftId }) ? null : (
+        <TraitsPicker
+          provider="codex"
+          models={models}
+          {...(threadRef ? { threadRef } : {})}
+          {...(draftId ? { draftId } : {})}
+          model={model}
+          modelOptions={modelOptions}
+          prompt={prompt}
+          onPromptChange={onPromptChange}
+        />
+      ),
   },
   claudeAgent: {
     getState: (input) => getProviderStateFromCapabilities(input),
@@ -147,18 +156,19 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       modelOptions,
       prompt,
       onPromptChange,
-    }) => (
-      <TraitsMenuContent
-        provider="claudeAgent"
-        models={models}
-        {...(threadRef ? { threadRef } : {})}
-        {...(draftId ? { draftId } : {})}
-        model={model}
-        modelOptions={modelOptions}
-        prompt={prompt}
-        onPromptChange={onPromptChange}
-      />
-    ),
+    }) =>
+      !hasComposerTraitsTarget({ threadRef, draftId }) ? null : (
+        <TraitsMenuContent
+          provider="claudeAgent"
+          models={models}
+          {...(threadRef ? { threadRef } : {})}
+          {...(draftId ? { draftId } : {})}
+          model={model}
+          modelOptions={modelOptions}
+          prompt={prompt}
+          onPromptChange={onPromptChange}
+        />
+      ),
     renderTraitsPicker: ({
       threadRef,
       draftId,
@@ -167,18 +177,19 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       modelOptions,
       prompt,
       onPromptChange,
-    }) => (
-      <TraitsPicker
-        provider="claudeAgent"
-        models={models}
-        {...(threadRef ? { threadRef } : {})}
-        {...(draftId ? { draftId } : {})}
-        model={model}
-        modelOptions={modelOptions}
-        prompt={prompt}
-        onPromptChange={onPromptChange}
-      />
-    ),
+    }) =>
+      !hasComposerTraitsTarget({ threadRef, draftId }) ? null : (
+        <TraitsPicker
+          provider="claudeAgent"
+          models={models}
+          {...(threadRef ? { threadRef } : {})}
+          {...(draftId ? { draftId } : {})}
+          model={model}
+          modelOptions={modelOptions}
+          prompt={prompt}
+          onPromptChange={onPromptChange}
+        />
+      ),
   },
 };
 
