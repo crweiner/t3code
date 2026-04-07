@@ -67,7 +67,7 @@ export function shouldWriteThreadErrorToCurrentServerThread(input: {
     input.serverThread &&
     input.targetThreadId === input.routeThreadRef.threadId &&
     input.serverThread.environmentId === input.routeThreadRef.environmentId &&
-    input.serverThread.id === input.routeThreadRef.threadId,
+    input.serverThread.id === input.targetThreadId,
   );
 }
 
