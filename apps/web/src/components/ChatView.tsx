@@ -1695,10 +1695,10 @@ export default function ChatView({ environmentId, threadId }: ChatViewProps) {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
       const isCurrentServerThread =
-        activeThread !== undefined &&
+        serverThread !== undefined &&
         targetThreadId === routeThreadRef.threadId &&
-        activeThread.environmentId === routeThreadRef.environmentId &&
-        activeThread.id === routeThreadRef.threadId;
+        serverThread.environmentId === routeThreadRef.environmentId &&
+        serverThread.id === routeThreadRef.threadId;
       if (isCurrentServerThread) {
         setStoreThreadError(targetThreadId, nextError);
         return;
@@ -1713,7 +1713,7 @@ export default function ChatView({ environmentId, threadId }: ChatViewProps) {
         };
       });
     },
-    [activeThread, routeThreadRef, setStoreThreadError],
+    [serverThread, routeThreadRef, setStoreThreadError],
   );
 
   const focusComposer = useCallback(() => {
