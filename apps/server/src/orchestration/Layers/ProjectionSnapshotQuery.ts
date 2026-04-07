@@ -658,9 +658,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 });
               }
 
+              const activeProjectRows = projectRows.filter((row) => row.deletedAt === null);
               const repositoryIdentities = new Map(
                 yield* Effect.forEach(
-                  projectRows,
+                  activeProjectRows,
                   (row) =>
                     repositoryIdentityResolver
                       .resolve(row.workspaceRoot)
