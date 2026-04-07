@@ -128,6 +128,7 @@ import {
   sortProjectsForSidebar,
   sortThreadsForSidebar,
   useThreadJumpHintVisibility,
+  ThreadStatusPill,
 } from "./Sidebar.logic";
 import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -173,7 +174,7 @@ function ThreadStatusLabel({
   status,
   compact = false,
 }: {
-  status: NonNullable<ReturnType<typeof resolveThreadStatusPill>>;
+  status: ThreadStatusPill;
   compact?: boolean;
 }) {
   if (compact) {
@@ -654,7 +655,7 @@ interface SidebarProjectThreadListProps {
   projectKey: string;
   projectExpanded: boolean;
   hasOverflowingThreads: boolean;
-  hiddenThreadStatus: ReturnType<typeof resolveProjectStatusIndicator>;
+  hiddenThreadStatus: ThreadStatusPill | null;
   orderedProjectThreadKeys: readonly string[];
   renderedThreads: readonly SidebarThreadSummary[];
   showEmptyThreadState: boolean;
