@@ -46,6 +46,22 @@ interface PersistedTerminalStateStoreState {
   terminalStateByThreadKey?: Record<string, ThreadTerminalState>;
 }
 
+export function migratePersistedTerminalStateStoreState(
+  persistedState: unknown,
+  version: number,
+): PersistedTerminalStateStoreState {
+  if (version === 1 && persistedState && typeof persistedState === "object") {
+    const candidate = persistedState as PersistedTerminalStateStoreState;
+    const nextTerminalStateByThreadKey = Object.fromEntries(
+      Object.entries(candidate.terminalStateByThreadKey ?? {}).filter(([threadKey]) =>
+        parseScopedThreadKey(threadKey),
+      ),
+    );
+    return { terminalStateByThreadKey: nextTerminalStateByThreadKey };
+  }
+  return { terminalStateByThreadKey: {} };
+}
+
 function createTerminalStateStorage() {
   return resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
 }
@@ -822,18 +838,7 @@ export const useTerminalStateStore = create<TerminalStateStoreState>()(
       name: TERMINAL_STATE_STORAGE_KEY,
       version: 2,
       storage: createJSONStorage(createTerminalStateStorage),
-      migrate: (persistedState, version) => {
-        if (version === 2 && persistedState && typeof persistedState === "object") {
-          const candidate = persistedState as PersistedTerminalStateStoreState;
-          const nextTerminalStateByThreadKey = Object.fromEntries(
-            Object.entries(candidate.terminalStateByThreadKey ?? {}).filter(([threadKey]) =>
-              parseScopedThreadKey(threadKey),
-            ),
-          );
-          return { terminalStateByThreadKey: nextTerminalStateByThreadKey };
-        }
-        return { terminalStateByThreadKey: {} };
-      },
+      migrate: migratePersistedTerminalStateStoreState,
       partialize: (state) => ({
         terminalStateByThreadKey: state.terminalStateByThreadKey,
       }),

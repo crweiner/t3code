@@ -278,7 +278,12 @@ function EventRouter() {
       if (!payload.bootstrapProjectId || !payload.bootstrapThreadId) {
         return;
       }
-      setProjectExpanded(payload.bootstrapProjectId, true);
+      setProjectExpanded(
+        scopedProjectKey(
+          scopeProjectRef(payload.environment.environmentId, payload.bootstrapProjectId),
+        ),
+        true,
+      );
 
       if (readPathname() !== "/") {
         return;

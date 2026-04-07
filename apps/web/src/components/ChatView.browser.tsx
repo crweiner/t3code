@@ -17,7 +17,12 @@ import {
   OrchestrationSessionStatus,
   DEFAULT_SERVER_SETTINGS,
 } from "@t3tools/contracts";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime";
+import {
+  scopedProjectKey,
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { HttpResponse, http, ws } from "msw";
 import { setupWorker } from "msw/browser";
@@ -38,6 +43,7 @@ import { getServerConfig } from "../rpc/serverState";
 import { getRouter } from "../router";
 import { selectBootstrapCompleteForActiveEnvironment, useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
+import { useUiStateStore } from "../uiStateStore";
 import { BrowserWsRpcHarness, type NormalizedWsRpcRequestBody } from "../../test/wsRpcHarness";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
@@ -56,6 +62,7 @@ const THREAD_REF = scopeThreadRef(LOCAL_ENVIRONMENT_ID, THREAD_ID);
 const THREAD_KEY = scopedThreadKey(THREAD_REF);
 const UUID_ROUTE_RE = /^\/draft\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROJECT_DRAFT_KEY = `${LOCAL_ENVIRONMENT_ID}:${PROJECT_ID}`;
+const PROJECT_KEY = scopedProjectKey(scopeProjectRef(LOCAL_ENVIRONMENT_ID, PROJECT_ID));
 const NOW_ISO = "2026-03-04T12:00:00.000Z";
 const BASE_TIME_MS = Date.parse(NOW_ISO);
 const ATTACHMENT_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'></svg>";
@@ -1253,6 +1260,11 @@ describe("ChatView timeline estimator parity (full app)", () => {
       activeEnvironmentId: null,
       environmentStateById: {},
     });
+    useUiStateStore.setState({
+      projectExpandedById: {},
+      projectOrder: [],
+      threadLastVisitedAtById: {},
+    });
     useTerminalStateStore.persist.clearStorage();
     useTerminalStateStore.setState({
       terminalStateByThreadKey: {},
@@ -1299,6 +1311,35 @@ describe("ChatView timeline estimator parity (full app)", () => {
       }
     },
   );
+
+  it("re-expands the bootstrap project using its scoped key", async () => {
+    useUiStateStore.setState({
+      projectExpandedById: {
+        [PROJECT_KEY]: false,
+      },
+      projectOrder: [PROJECT_KEY],
+      threadLastVisitedAtById: {},
+    });
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-bootstrap-project-expand" as MessageId,
+        targetText: "bootstrap project expand",
+      }),
+    });
+
+    try {
+      await vi.waitFor(
+        () => {
+          expect(useUiStateStore.getState().projectExpandedById[PROJECT_KEY]).toBe(true);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
 
   it("tracks wrapping parity while resizing an existing ChatView across the viewport matrix", async () => {
     const userText = "x".repeat(3_200);

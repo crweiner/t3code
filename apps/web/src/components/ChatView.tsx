@@ -197,6 +197,7 @@ import {
   reconcileMountedTerminalThreadIds,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
+  shouldWriteThreadErrorToCurrentServerThread,
   threadHasStarted,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -1722,11 +1723,11 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
     (targetThreadId: ThreadId | null, error: string | null) => {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
-      const isCurrentServerThread =
-        activeThread !== undefined &&
-        targetThreadId === routeThreadRef.threadId &&
-        activeThread.environmentId === routeThreadRef.environmentId &&
-        activeThread.id === routeThreadRef.threadId;
+      const isCurrentServerThread = shouldWriteThreadErrorToCurrentServerThread({
+        serverThread,
+        routeThreadRef,
+        targetThreadId,
+      });
       if (isCurrentServerThread) {
         setStoreThreadError(targetThreadId, nextError);
         return;
@@ -1741,7 +1742,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
         };
       });
     },
-    [activeThread, routeThreadRef, setStoreThreadError],
+    [routeThreadRef, serverThread, setStoreThreadError],
   );
 
   const focusComposer = useCallback(() => {
@@ -3089,10 +3090,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
     const shouldCreateWorktree =
       isFirstMessage && envMode === "worktree" && !activeThread.worktreePath;
     if (shouldCreateWorktree && !activeThread.branch) {
-      setStoreThreadError(
-        threadIdForSend,
-        "Select a base branch before sending in New worktree mode.",
-      );
+      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
     }
 

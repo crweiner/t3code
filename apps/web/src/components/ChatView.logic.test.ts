@@ -11,6 +11,7 @@ import {
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
+  shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 
@@ -170,6 +171,36 @@ describe("reconcileMountedTerminalThreadIds", () => {
         activeThreadTerminalOpen: false,
       }),
     ).toEqual(currentThreadIds.slice(-MAX_HIDDEN_MOUNTED_TERMINAL_THREADS));
+  });
+});
+
+describe("shouldWriteThreadErrorToCurrentServerThread", () => {
+  it("routes errors to the active server thread when route and target match", () => {
+    const threadId = ThreadId.makeUnsafe("thread-1");
+    const routeThreadRef = scopeThreadRef(localEnvironmentId, threadId);
+
+    expect(
+      shouldWriteThreadErrorToCurrentServerThread({
+        serverThread: {
+          environmentId: localEnvironmentId,
+          id: threadId,
+        },
+        routeThreadRef,
+        targetThreadId: threadId,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not route draft-thread errors into server-backed state", () => {
+    const threadId = ThreadId.makeUnsafe("thread-1");
+
+    expect(
+      shouldWriteThreadErrorToCurrentServerThread({
+        serverThread: undefined,
+        routeThreadRef: scopeThreadRef(localEnvironmentId, threadId),
+        targetThreadId: threadId,
+      }),
+    ).toBe(false);
   });
 });
 

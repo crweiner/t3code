@@ -3,6 +3,7 @@ import { ThreadId, type TerminalEvent } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  migratePersistedTerminalStateStoreState,
   selectTerminalEventEntries,
   selectThreadTerminalState,
   useTerminalStateStore,
@@ -171,6 +172,48 @@ describe("terminalStateStore actions", () => {
         OTHER_THREAD_REF,
       ).terminalIds,
     ).toEqual(["default", "env-b-terminal"]);
+  });
+
+  it("migrates v1 persisted terminal state using the stored version", () => {
+    const migrated = migratePersistedTerminalStateStoreState(
+      {
+        terminalStateByThreadKey: {
+          [scopedThreadKey(THREAD_REF)]: {
+            terminalOpen: true,
+            terminalHeight: 320,
+            terminalIds: ["default"],
+            runningTerminalIds: [],
+            activeTerminalId: "default",
+            terminalGroups: [{ id: "group-default", terminalIds: ["default"] }],
+            activeTerminalGroupId: "group-default",
+          },
+          "legacy-thread-id": {
+            terminalOpen: true,
+            terminalHeight: 320,
+            terminalIds: ["default"],
+            runningTerminalIds: [],
+            activeTerminalId: "default",
+            terminalGroups: [{ id: "group-default", terminalIds: ["default"] }],
+            activeTerminalGroupId: "group-default",
+          },
+        },
+      },
+      1,
+    );
+
+    expect(migrated).toEqual({
+      terminalStateByThreadKey: {
+        [scopedThreadKey(THREAD_REF)]: {
+          terminalOpen: true,
+          terminalHeight: 320,
+          terminalIds: ["default"],
+          runningTerminalIds: [],
+          activeTerminalId: "default",
+          terminalGroups: [{ id: "group-default", terminalIds: ["default"] }],
+          activeTerminalGroupId: "group-default",
+        },
+      },
+    });
   });
 
   it("tracks and clears terminal subprocess activity", () => {

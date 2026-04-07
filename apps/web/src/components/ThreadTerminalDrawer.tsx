@@ -225,7 +225,7 @@ interface TerminalViewportProps {
   drawerHeight: number;
 }
 
-function TerminalViewport({
+export function TerminalViewport({
   threadRef,
   threadId,
   terminalId,
@@ -264,6 +264,9 @@ function TerminalViewport({
     if (!mount) return;
 
     let disposed = false;
+    const api = readEnvironmentApi(threadRef.environmentId);
+    const localApi = readLocalApi();
+    if (!api || !localApi) return;
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({
@@ -280,10 +283,6 @@ function TerminalViewport({
 
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
-
-    const api = readEnvironmentApi(threadRef.environmentId);
-    const localApi = readLocalApi();
-    if (!api || !localApi) return;
 
     const clearSelectionAction = () => {
       selectionActionRequestIdRef.current += 1;
@@ -682,7 +681,7 @@ function TerminalViewport({
     // autoFocus is intentionally omitted;
     // it is only read at mount time and must not trigger terminal teardown/recreation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwd, runtimeEnv, terminalId, threadId]);
+  }, [cwd, runtimeEnv, terminalId, threadId, threadRef]);
 
   useEffect(() => {
     if (!autoFocus) return;

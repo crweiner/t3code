@@ -1,4 +1,5 @@
 import {
+  type EnvironmentId,
   ProjectId,
   type ModelSelection,
   type ScopedThreadRef,
@@ -49,6 +50,25 @@ export function buildLocalDraftThread(
     activities: [],
     proposedPlans: [],
   };
+}
+
+export function shouldWriteThreadErrorToCurrentServerThread(input: {
+  serverThread:
+    | {
+        environmentId: EnvironmentId;
+        id: ThreadId;
+      }
+    | null
+    | undefined;
+  routeThreadRef: ScopedThreadRef;
+  targetThreadId: ThreadId;
+}): boolean {
+  return Boolean(
+    input.serverThread &&
+    input.targetThreadId === input.routeThreadRef.threadId &&
+    input.serverThread.environmentId === input.routeThreadRef.environmentId &&
+    input.serverThread.id === input.routeThreadRef.threadId,
+  );
 }
 
 export function reconcileMountedTerminalThreadIds(input: {
