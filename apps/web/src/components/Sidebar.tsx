@@ -152,6 +152,54 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
 } as const;
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 
+function threadJumpLabelMapsEqual(
+  left: ReadonlyMap<string, string>,
+  right: ReadonlyMap<string, string>,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildThreadJumpLabelMap(input: {
+  keybindings: ReturnType<typeof useServerKeybindings>;
+  platform: string;
+  terminalOpen: boolean;
+  threadJumpCommandByKey: ReadonlyMap<
+    string,
+    NonNullable<ReturnType<typeof threadJumpCommandForIndex>>
+  >;
+}): ReadonlyMap<string, string> {
+  if (input.threadJumpCommandByKey.size === 0) {
+    return EMPTY_THREAD_JUMP_LABELS;
+  }
+
+  const shortcutLabelOptions = {
+    platform: input.platform,
+    context: {
+      terminalFocus: false,
+      terminalOpen: input.terminalOpen,
+    },
+  } as const;
+  const mapping = new Map<string, string>();
+  for (const [threadKey, command] of input.threadJumpCommandByKey) {
+    const label = shortcutLabelForCommand(input.keybindings, command, shortcutLabelOptions);
+    if (label) {
+      mapping.set(threadKey, label);
+    }
+  }
+  return mapping.size > 0 ? mapping : EMPTY_THREAD_JUMP_LABELS;
+}
+
 type SidebarProjectSnapshot = Project & {
   projectKey: string;
 };
@@ -2187,7 +2235,6 @@ export default function Sidebar() {
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
-  const terminalStateByThreadKey = useTerminalStateStore((state) => state.terminalStateByThreadKey);
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname.startsWith("/settings");
@@ -2273,22 +2320,31 @@ export default function Sidebar() {
     }
     return next;
   }, [sidebarThreads]);
-  const routeTerminalOpen = routeThreadRef
-    ? selectThreadTerminalState(terminalStateByThreadKey, routeThreadRef).terminalOpen
-    : false;
-  const sidebarShortcutLabelOptions = useMemo(
+  const getCurrentSidebarShortcutContext = useCallback(
+    () => ({
+      terminalFocus: isTerminalFocused(),
+      terminalOpen: routeThreadRef
+        ? selectThreadTerminalState(
+            useTerminalStateStore.getState().terminalStateByThreadKey,
+            routeThreadRef,
+          ).terminalOpen
+        : false,
+    }),
+    [routeThreadRef],
+  );
+  const newThreadShortcutLabelOptions = useMemo(
     () => ({
       platform,
       context: {
         terminalFocus: false,
-        terminalOpen: routeTerminalOpen,
+        terminalOpen: false,
       },
     }),
-    [platform, routeTerminalOpen],
+    [platform],
   );
   const newThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.newLocal", sidebarShortcutLabelOptions) ??
-    shortcutLabelForCommand(keybindings, "chat.new", sidebarShortcutLabelOptions);
+    shortcutLabelForCommand(keybindings, "chat.newLocal", newThreadShortcutLabelOptions) ??
+    shortcutLabelForCommand(keybindings, "chat.new", newThreadShortcutLabelOptions);
   const focusMostRecentThreadForProject = useCallback(
     (projectRef: { environmentId: EnvironmentId; projectId: ProjectId }) => {
       const projectKey = scopedProjectKey(
@@ -2577,35 +2633,33 @@ export default function Sidebar() {
     () => [...threadJumpCommandByKey.keys()],
     [threadJumpCommandByKey],
   );
-  const visibleThreadJumpLabelByKey = useMemo(() => {
-    if (!showThreadJumpHints) {
-      return EMPTY_THREAD_JUMP_LABELS;
-    }
-
-    const mapping = new Map<string, string>();
-    for (const [threadKey, command] of threadJumpCommandByKey) {
-      const label = shortcutLabelForCommand(keybindings, command, sidebarShortcutLabelOptions);
-      if (label) {
-        mapping.set(threadKey, label);
-      }
-    }
-    return mapping;
-  }, [keybindings, showThreadJumpHints, sidebarShortcutLabelOptions, threadJumpCommandByKey]);
+  const [threadJumpLabelByKey, setThreadJumpLabelByKey] =
+    useState<ReadonlyMap<string, string>>(EMPTY_THREAD_JUMP_LABELS);
+  const visibleThreadJumpLabelByKey = showThreadJumpHints
+    ? threadJumpLabelByKey
+    : EMPTY_THREAD_JUMP_LABELS;
   const orderedSidebarThreadKeys = visibleSidebarThreadKeys;
 
   useEffect(() => {
-    const getShortcutContext = () => ({
-      terminalFocus: isTerminalFocused(),
-      terminalOpen: routeTerminalOpen,
-    });
-
     const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
-      updateThreadJumpHintsVisibility(
-        shouldShowThreadJumpHints(event, keybindings, {
+      const shortcutContext = getCurrentSidebarShortcutContext();
+      const shouldShowHints = shouldShowThreadJumpHints(event, keybindings, {
+        platform,
+        context: shortcutContext,
+      });
+      setThreadJumpLabelByKey((current) => {
+        if (!shouldShowHints) {
+          return current === EMPTY_THREAD_JUMP_LABELS ? current : EMPTY_THREAD_JUMP_LABELS;
+        }
+        const nextLabelMap = buildThreadJumpLabelMap({
+          keybindings,
           platform,
-          context: getShortcutContext(),
-        }),
-      );
+          terminalOpen: shortcutContext.terminalOpen,
+          threadJumpCommandByKey,
+        });
+        return threadJumpLabelMapsEqual(current, nextLabelMap) ? current : nextLabelMap;
+      });
+      updateThreadJumpHintsVisibility(shouldShowHints);
 
       if (event.defaultPrevented || event.repeat) {
         return;
@@ -2613,7 +2667,7 @@ export default function Sidebar() {
 
       const command = resolveShortcutCommand(event, keybindings, {
         platform,
-        context: getShortcutContext(),
+        context: shortcutContext,
       });
       const traversalDirection = threadTraversalDirectionFromCommand(command);
       if (traversalDirection !== null) {
@@ -2656,15 +2710,30 @@ export default function Sidebar() {
     };
 
     const onWindowKeyUp = (event: globalThis.KeyboardEvent) => {
-      updateThreadJumpHintsVisibility(
-        shouldShowThreadJumpHints(event, keybindings, {
+      const shortcutContext = getCurrentSidebarShortcutContext();
+      const shouldShowHints = shouldShowThreadJumpHints(event, keybindings, {
+        platform,
+        context: shortcutContext,
+      });
+      setThreadJumpLabelByKey((current) => {
+        if (!shouldShowHints) {
+          return current === EMPTY_THREAD_JUMP_LABELS ? current : EMPTY_THREAD_JUMP_LABELS;
+        }
+        const nextLabelMap = buildThreadJumpLabelMap({
+          keybindings,
           platform,
-          context: getShortcutContext(),
-        }),
-      );
+          terminalOpen: shortcutContext.terminalOpen,
+          threadJumpCommandByKey,
+        });
+        return threadJumpLabelMapsEqual(current, nextLabelMap) ? current : nextLabelMap;
+      });
+      updateThreadJumpHintsVisibility(shouldShowHints);
     };
 
     const onWindowBlur = () => {
+      setThreadJumpLabelByKey((current) =>
+        current === EMPTY_THREAD_JUMP_LABELS ? current : EMPTY_THREAD_JUMP_LABELS,
+      );
       updateThreadJumpHintsVisibility(false);
     };
 
@@ -2678,13 +2747,14 @@ export default function Sidebar() {
       window.removeEventListener("blur", onWindowBlur);
     };
   }, [
+    getCurrentSidebarShortcutContext,
     keybindings,
     navigateToThread,
     orderedSidebarThreadKeys,
     platform,
-    routeTerminalOpen,
     routeThreadKey,
     sidebarThreadByKey,
+    threadJumpCommandByKey,
     threadJumpThreadKeys,
     updateThreadJumpHintsVisibility,
   ]);

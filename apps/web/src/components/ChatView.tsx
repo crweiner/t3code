@@ -821,17 +821,15 @@ export default function ChatView(props: ChatViewProps) {
     setMessagesScrollElement(element);
   }, []);
 
-  const terminalStateByThreadKey = useTerminalStateStore((state) => state.terminalStateByThreadKey);
-  const terminalState = useMemo(
-    () => selectThreadTerminalState(terminalStateByThreadKey, routeThreadRef),
-    [routeThreadRef, terminalStateByThreadKey],
+  const terminalState = useTerminalStateStore((state) =>
+    selectThreadTerminalState(state.terminalStateByThreadKey, routeThreadRef),
   );
-  const openTerminalThreadKeys = useMemo(
-    () =>
-      Object.entries(terminalStateByThreadKey).flatMap(([nextThreadKey, nextTerminalState]) =>
+  const openTerminalThreadKeys = useTerminalStateStore(
+    useShallow((state) =>
+      Object.entries(state.terminalStateByThreadKey).flatMap(([nextThreadKey, nextTerminalState]) =>
         nextTerminalState.terminalOpen ? [nextThreadKey] : [],
       ),
-    [terminalStateByThreadKey],
+    ),
   );
   const storeSetTerminalOpen = useTerminalStateStore((s) => s.setTerminalOpen);
   const storeSplitTerminal = useTerminalStateStore((s) => s.splitTerminal);
