@@ -1239,10 +1239,14 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeAllListeners(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
   ipcMain.on(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL, (event) => {
+    const token = backendBootstrapToken || undefined;
+    if (token) {
+      backendBootstrapToken = "";
+    }
     event.returnValue = {
       label: "Local environment",
       wsUrl: backendWsUrl || null,
-      bootstrapToken: backendBootstrapToken || undefined,
+      bootstrapToken: token,
     } as const;
   });
 
