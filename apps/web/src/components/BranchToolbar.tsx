@@ -105,10 +105,7 @@ export default function BranchToolbar({
         currentWorktreePath: activeWorktreePath,
         effectiveEnvMode,
       });
-      if (!draftId) {
-        return;
-      }
-      setDraftThreadContext(draftId, {
+      setDraftThreadContext(draftId ?? threadRef, {
         branch,
         worktreePath,
         envMode: nextDraftEnvMode,
@@ -124,6 +121,7 @@ export default function BranchToolbar({
       setThreadBranchAction,
       setDraftThreadContext,
       draftId,
+      threadRef,
       environmentId,
       effectiveEnvMode,
     ],
