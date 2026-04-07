@@ -2675,20 +2675,25 @@ export function useEffectiveComposerModelState(input: {
  */
 export function markPromotedDraftThread(threadId: ThreadId): void {
   const store = useComposerDraftStore.getState();
+  const draftThreadTargets: ComposerThreadTarget[] = [];
   if (store.draftThreadsByThreadKey[threadId] !== undefined) {
-    store.markDraftThreadPromoting(threadId);
+    draftThreadTargets.push(threadId);
+  }
+  for (const [threadKey] of Object.entries(store.draftThreadsByThreadKey)) {
+    if (threadKey === threadId) {
+      continue;
+    }
+    const threadRef = composerThreadRefFromKey(threadKey);
+    if (threadRef?.threadId === threadId) {
+      draftThreadTargets.push(threadRef);
+    }
+  }
+  if (draftThreadTargets.length === 0) {
     return;
   }
-  const draftThreadEntries = Object.entries(store.draftThreadsByThreadKey).flatMap(
-    ([threadKey]) => {
-      const threadRef = composerThreadRefFromKey(threadKey);
-      return threadRef?.threadId === threadId ? [threadRef] : [];
-    },
-  );
-  if (draftThreadEntries.length !== 1) {
-    return;
+  for (const draftThreadTarget of draftThreadTargets) {
+    store.markDraftThreadPromoting(draftThreadTarget);
   }
-  markPromotedDraftThreadByRef(draftThreadEntries[0]!);
 }
 
 export function markPromotedDraftThreadByRef(threadRef: ScopedThreadRef): void {

@@ -1386,7 +1386,7 @@ export default function ChatView({ environmentId, threadId, routeKind }: ChatVie
         : // Spread only fires for the few messages that actually changed;
           // unchanged ones early-return their original reference.
           // In-place mutation would break React's immutable state contract.
-          // oxlint-disable-next-line no-map-spread
+          // oxlint_disable-next-line no-map-spread
           messages.map((message) => {
             if (
               message.role !== "user" ||

@@ -480,6 +480,11 @@ function threadKeyFor(threadId: ThreadId): string {
   return scopedThreadKey(threadRefFor(threadId));
 }
 
+function composerDraftFor(threadId: ThreadId) {
+  const { draftsByThreadKey } = useComposerDraftStore.getState();
+  return draftsByThreadKey[threadKeyFor(threadId)] ?? draftsByThreadKey[threadId];
+}
+
 function threadIdFromPath(pathname: string): ThreadId {
   const segments = pathname.split("/");
   const threadId = segments[segments.length - 1];
@@ -2696,7 +2701,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const newThreadId = threadIdFromPath(newThreadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[newThreadId]).toMatchObject({
+      expect(composerDraftFor(newThreadId)).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2749,7 +2754,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const newThreadId = threadIdFromPath(newThreadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[newThreadId]).toMatchObject({
+      expect(composerDraftFor(newThreadId)).toMatchObject({
         modelSelectionByProvider: {
           claudeAgent: {
             provider: "claudeAgent",
@@ -2789,7 +2794,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const newThreadId = threadIdFromPath(newThreadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[newThreadId]).toBe(undefined);
+      expect(composerDraftFor(newThreadId)).toBe(undefined);
     } finally {
       await mounted.cleanup();
     }
@@ -2831,7 +2836,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       const threadId = threadIdFromPath(threadPath);
 
-      expect(useComposerDraftStore.getState().draftsByThreadKey[threadId]).toMatchObject({
+      expect(composerDraftFor(threadId)).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",
@@ -2860,7 +2865,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         (path) => path === threadPath,
         "New-thread should reuse the existing project draft thread.",
       );
-      expect(useComposerDraftStore.getState().draftsByThreadKey[threadId]).toMatchObject({
+      expect(composerDraftFor(threadId)).toMatchObject({
         modelSelectionByProvider: {
           codex: {
             provider: "codex",

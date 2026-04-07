@@ -475,6 +475,7 @@ describe("composerDraftStore project draft thread mapping", () => {
   const otherProjectId = ProjectId.makeUnsafe("project-b");
   const projectRef = scopeProjectRef(TEST_ENVIRONMENT_ID, projectId);
   const otherProjectRef = scopeProjectRef(TEST_ENVIRONMENT_ID, otherProjectId);
+  const remoteProjectRef = scopeProjectRef(OTHER_TEST_ENVIRONMENT_ID, projectId);
   const threadId = ThreadId.makeUnsafe("thread-a");
   const otherThreadId = ThreadId.makeUnsafe("thread-b");
 
@@ -624,6 +625,26 @@ describe("composerDraftStore project draft thread mapping", () => {
       useComposerDraftStore.getState().getDraftThreadByProjectRef(otherProjectRef)?.threadId,
     ).toBe(otherThreadId);
     expect(draftFor(otherThreadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("keep me");
+  });
+
+  it("marks every matching scoped draft when multiple environments share a thread id", () => {
+    const store = useComposerDraftStore.getState();
+    const localThreadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+    const remoteThreadRef = scopeThreadRef(OTHER_TEST_ENVIRONMENT_ID, threadId);
+
+    store.setProjectDraftThreadId(projectRef, localThreadRef);
+    store.setPrompt(localThreadRef, "local draft");
+    store.setProjectDraftThreadId(remoteProjectRef, remoteThreadRef);
+    store.setPrompt(remoteThreadRef, "remote draft");
+
+    markPromotedDraftThread(threadId);
+
+    expect(store.getDraftThreadByProjectRef(projectRef)).toBeNull();
+    expect(store.getDraftThreadByProjectRef(remoteProjectRef)).toBeNull();
+    expect(store.getDraftThreadByRef(localThreadRef)?.promotedTo).toEqual(localThreadRef);
+    expect(store.getDraftThreadByRef(remoteThreadRef)?.promotedTo).toEqual(remoteThreadRef);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("local draft");
+    expect(draftFor(threadId, OTHER_TEST_ENVIRONMENT_ID)?.prompt).toBe("remote draft");
   });
 
   it("only marks promoted drafts for the matching environment ref", () => {
