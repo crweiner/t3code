@@ -1640,6 +1640,22 @@ export function selectSidebarThreadsAcrossEnvironments(state: AppState): Sidebar
   );
 }
 
+export function selectSidebarThreadsForProjectRef(
+  state: AppState,
+  ref: ScopedProjectRef | null | undefined,
+): SidebarThreadSummary[] {
+  if (!ref) {
+    return [];
+  }
+
+  const environmentState = selectEnvironmentState(state, ref.environmentId);
+  const threadIds = environmentState.threadIdsByProjectId[ref.projectId] ?? EMPTY_THREAD_IDS;
+  return threadIds.flatMap((threadId) => {
+    const thread = environmentState.sidebarThreadSummaryById[threadId];
+    return thread ? [thread] : [];
+  });
+}
+
 export function selectBootstrapCompleteForActiveEnvironment(state: AppState): boolean {
   return selectEnvironmentState(state, state.activeEnvironmentId).bootstrapComplete;
 }
