@@ -58,7 +58,7 @@ const composerDebouncedStorage = createDebouncedStorage(
 );
 
 // Flush pending composer draft writes before page unload to prevent data loss.
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("beforeunload", () => {
     composerDebouncedStorage.flush();
   });
