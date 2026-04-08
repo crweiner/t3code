@@ -1,6 +1,7 @@
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  BookOpenIcon,
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
@@ -698,6 +699,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname.startsWith("/settings");
+  const isOnNilus = pathname.startsWith("/nilus");
   const appSettings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const { activeDraftThread, activeThread, handleNewThread } = useHandleNewThread();
@@ -2253,6 +2255,20 @@ export default function Sidebar() {
           <SidebarFooter className="p-2">
             <SidebarUpdatePill />
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  className={`gap-2 px-2 py-1.5 ${
+                    isOnNilus
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  }`}
+                  onClick={() => void navigate({ to: "/nilus" })}
+                >
+                  <BookOpenIcon className="size-3.5" />
+                  <span className="text-xs">Nilus</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"

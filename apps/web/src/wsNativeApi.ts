@@ -53,6 +53,12 @@ export function createWsNativeApi(): NativeApi {
       searchEntries: rpcClient.projects.searchEntries,
       writeFile: rpcClient.projects.writeFile,
     },
+    nilus: {
+      getStartupSnapshot: rpcClient.nilus.getStartupSnapshot,
+      listTasks: rpcClient.nilus.listTasks,
+      listDomainEntries: rpcClient.nilus.listDomainEntries,
+      readDocument: rpcClient.nilus.readDocument,
+    },
     shell: {
       openInEditor: (cwd, editor) => rpcClient.shell.openInEditor({ cwd, editor }),
       openExternal: async (url) => {

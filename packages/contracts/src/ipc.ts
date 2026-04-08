@@ -25,6 +25,16 @@ import type {
   ProjectWriteFileResult,
 } from "./project";
 import type {
+  NilusDocument,
+  NilusListDomainEntriesInput,
+  NilusListDomainEntriesResult,
+  NilusListTasksInput,
+  NilusReadDocumentInput,
+  NilusStartupSnapshot,
+  NilusStartupSnapshotInput,
+  NilusTaskRecord,
+} from "./nilus";
+import type {
   ServerConfig,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
@@ -140,6 +150,12 @@ export interface NativeApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+  };
+  nilus: {
+    getStartupSnapshot: (input: NilusStartupSnapshotInput) => Promise<NilusStartupSnapshot>;
+    listTasks: (input: NilusListTasksInput) => Promise<ReadonlyArray<NilusTaskRecord>>;
+    listDomainEntries: (input: NilusListDomainEntriesInput) => Promise<NilusListDomainEntriesResult>;
+    readDocument: (input: NilusReadDocumentInput) => Promise<NilusDocument>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;

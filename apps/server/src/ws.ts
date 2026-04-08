@@ -2,6 +2,7 @@ import { Cause, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect
 import {
   CommandId,
   EventId,
+  NilusReadError,
   type OrchestrationCommand,
   type GitActionProgressEvent,
   type GitManagerServiceError,
@@ -47,6 +48,12 @@ import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
+import {
+  getNilusStartupSnapshot,
+  listNilusDomainEntries,
+  listNilusTasks,
+  readNilusDocument,
+} from "./nilus/readOnly";
 
 const WsRpcLayer = WsRpcGroup.toLayer(
   Effect.gen(function* () {
@@ -560,6 +567,33 @@ const WsRpcLayer = WsRpcGroup.toLayer(
             }),
           ),
           { "rpc.aggregate": "workspace" },
+        ),
+      [WS_METHODS.nilusGetStartupSnapshot]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusGetStartupSnapshot, getNilusStartupSnapshot(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusListTasks]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusListTasks, listNilusTasks(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusListDomainEntries]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusListDomainEntries, listNilusDomainEntries(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusReadDocument]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.nilusReadDocument,
+          readNilusDocument(input).pipe(
+            Effect.mapError((cause) =>
+              Schema.is(NilusReadError)(cause)
+                ? cause
+                : new NilusReadError({
+                    message: "Failed to read Nilus document.",
+                    cause,
+                  }),
+            ),
+          ),
+          { "rpc.aggregate": "nilus" },
         ),
       [WS_METHODS.shellOpenInEditor]: (input) =>
         observeRpcEffect(WS_METHODS.shellOpenInEditor, open.openInEditor(input), {

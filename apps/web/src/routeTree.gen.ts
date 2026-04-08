@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ChatRouteImport } from './routes/_chat'
+import { Route as NilusRouteImport } from './routes/nilus'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
@@ -23,6 +24,11 @@ const SettingsRoute = SettingsRouteImport.update({
 } as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NilusRoute = NilusRouteImport.update({
+  id: '/nilus',
+  path: '/nilus',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
@@ -48,12 +54,14 @@ const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/nilus': typeof NilusRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$threadId': typeof ChatThreadIdRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
 }
 export interface FileRoutesByTo {
+  '/nilus': typeof NilusRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$threadId': typeof ChatThreadIdRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -63,6 +71,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/nilus': typeof NilusRoute
   '/settings': typeof SettingsRouteWithChildren
   '/_chat/$threadId': typeof ChatThreadIdRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -73,12 +82,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/nilus'
     | '/settings'
     | '/$threadId'
     | '/settings/archived'
     | '/settings/general'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/nilus'
     | '/settings'
     | '/$threadId'
     | '/settings/archived'
@@ -87,6 +98,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/nilus'
     | '/settings'
     | '/_chat/$threadId'
     | '/settings/archived'
@@ -96,6 +108,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  NilusRoute: typeof NilusRoute
   SettingsRoute: typeof SettingsRouteWithChildren
 }
 
@@ -106,6 +119,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nilus': {
+      id: '/nilus'
+      path: '/nilus'
+      fullPath: '/nilus'
+      preLoaderRoute: typeof NilusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -174,6 +194,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  NilusRoute: NilusRoute,
   SettingsRoute: SettingsRouteWithChildren,
 }
 export const routeTree = rootRouteImport

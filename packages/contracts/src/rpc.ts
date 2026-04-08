@@ -53,6 +53,17 @@ import {
   ProjectWriteFileResult,
 } from "./project";
 import {
+  NilusDocument,
+  NilusListDomainEntriesInput,
+  NilusListDomainEntriesResult,
+  NilusListTasksInput,
+  NilusReadDocumentInput,
+  NilusReadError,
+  NilusStartupSnapshot,
+  NilusStartupSnapshotInput,
+  NilusTaskRecord,
+} from "./nilus";
+import {
   TerminalClearInput,
   TerminalCloseInput,
   TerminalError,
@@ -80,6 +91,10 @@ export const WS_METHODS = {
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  nilusGetStartupSnapshot: "nilus.getStartupSnapshot",
+  nilusListTasks: "nilus.listTasks",
+  nilusListDomainEntries: "nilus.listDomainEntries",
+  nilusReadDocument: "nilus.readDocument",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -159,6 +174,30 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
+});
+
+export const WsNilusGetStartupSnapshotRpc = Rpc.make(WS_METHODS.nilusGetStartupSnapshot, {
+  payload: NilusStartupSnapshotInput,
+  success: NilusStartupSnapshot,
+  error: NilusReadError,
+});
+
+export const WsNilusListTasksRpc = Rpc.make(WS_METHODS.nilusListTasks, {
+  payload: NilusListTasksInput,
+  success: Schema.Array(NilusTaskRecord),
+  error: NilusReadError,
+});
+
+export const WsNilusListDomainEntriesRpc = Rpc.make(WS_METHODS.nilusListDomainEntries, {
+  payload: NilusListDomainEntriesInput,
+  success: NilusListDomainEntriesResult,
+  error: NilusReadError,
+});
+
+export const WsNilusReadDocumentRpc = Rpc.make(WS_METHODS.nilusReadDocument, {
+  payload: NilusReadDocumentInput,
+  success: NilusDocument,
+  error: NilusReadError,
 });
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
@@ -342,6 +381,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateSettingsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
+  WsNilusGetStartupSnapshotRpc,
+  WsNilusListTasksRpc,
+  WsNilusListDomainEntriesRpc,
+  WsNilusReadDocumentRpc,
   WsShellOpenInEditorRpc,
   WsSubscribeGitStatusRpc,
   WsGitPullRpc,

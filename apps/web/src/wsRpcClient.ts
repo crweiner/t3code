@@ -59,6 +59,12 @@ export interface WsRpcClient {
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
   };
+  readonly nilus: {
+    readonly getStartupSnapshot: RpcUnaryMethod<typeof WS_METHODS.nilusGetStartupSnapshot>;
+    readonly listTasks: RpcUnaryMethod<typeof WS_METHODS.nilusListTasks>;
+    readonly listDomainEntries: RpcUnaryMethod<typeof WS_METHODS.nilusListDomainEntries>;
+    readonly readDocument: RpcUnaryMethod<typeof WS_METHODS.nilusReadDocument>;
+  };
   readonly shell: {
     readonly openInEditor: (input: {
       readonly cwd: Parameters<NativeApi["shell"]["openInEditor"]>[0];
@@ -150,6 +156,15 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
       writeFile: (input) =>
         transport.request((client) => client[WS_METHODS.projectsWriteFile](input)),
+    },
+    nilus: {
+      getStartupSnapshot: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusGetStartupSnapshot](input)),
+      listTasks: (input) => transport.request((client) => client[WS_METHODS.nilusListTasks](input)),
+      listDomainEntries: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusListDomainEntries](input)),
+      readDocument: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusReadDocument](input)),
     },
     shell: {
       openInEditor: (input) =>
