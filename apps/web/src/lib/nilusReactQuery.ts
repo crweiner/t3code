@@ -3,7 +3,6 @@ import type {
   NilusDomain,
   NilusListDomainEntriesResult,
   NilusTaskRecord,
-  NilusTaskContext,
 } from "@t3tools/contracts";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 
@@ -14,29 +13,6 @@ const EMPTY_DOMAIN_ENTRIES: NilusListDomainEntriesResult = {
   domain: "talk",
   entries: [],
 };
-const EMPTY_TASK_CONTEXT = {
-  task: {
-    number: 1,
-    status: "open",
-    priority: "C",
-    createdAt: "2026-04-08",
-    completedAt: null,
-    description: "Loading task context",
-    project: null,
-    owner: null,
-    thread: null,
-    recur: null,
-    after: null,
-    waiting: null,
-    raw: "(C) 2026-04-08 Loading task context",
-  },
-  continuityThread: null,
-  projects: [],
-  relatedOpenTasks: [],
-  recentDoneTasks: [],
-  relatedDocuments: [],
-  recentCommits: [],
-} satisfies NilusTaskContext;
 const STARTUP_STALE_TIME = 15_000;
 
 export const nilusQueryKeys = {
@@ -162,7 +138,6 @@ export function nilusTaskContextQueryOptions(input: {
     },
     enabled: (input.enabled ?? true) && input.repoRoot !== null && input.taskNumber !== null,
     staleTime: STARTUP_STALE_TIME,
-    placeholderData: (previous) => previous ?? EMPTY_TASK_CONTEXT,
   });
 }
 
