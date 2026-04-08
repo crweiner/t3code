@@ -74,8 +74,11 @@ export interface WsRpcClient {
   readonly nilus: {
     readonly getStartupSnapshot: RpcUnaryMethod<typeof WS_METHODS.nilusGetStartupSnapshot>;
     readonly listTasks: RpcUnaryMethod<typeof WS_METHODS.nilusListTasks>;
+    readonly getTaskContext: RpcUnaryMethod<typeof WS_METHODS.nilusGetTaskContext>;
     readonly listDomainEntries: RpcUnaryMethod<typeof WS_METHODS.nilusListDomainEntries>;
     readonly readDocument: RpcUnaryMethod<typeof WS_METHODS.nilusReadDocument>;
+    readonly prepareTaskCompletion: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTaskCompletion>;
+    readonly completeTask: RpcUnaryMethod<typeof WS_METHODS.nilusCompleteTask>;
   };
   readonly shell: {
     readonly openInEditor: (input: {
@@ -161,10 +164,16 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       getStartupSnapshot: (input) =>
         transport.request((client) => client[WS_METHODS.nilusGetStartupSnapshot](input)),
       listTasks: (input) => transport.request((client) => client[WS_METHODS.nilusListTasks](input)),
+      getTaskContext: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusGetTaskContext](input)),
       listDomainEntries: (input) =>
         transport.request((client) => client[WS_METHODS.nilusListDomainEntries](input)),
       readDocument: (input) =>
         transport.request((client) => client[WS_METHODS.nilusReadDocument](input)),
+      prepareTaskCompletion: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPrepareTaskCompletion](input)),
+      completeTask: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusCompleteTask](input)),
     },
     shell: {
       openInEditor: (input) =>

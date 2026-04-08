@@ -26,6 +26,22 @@ import type {
   ProjectWriteFileResult,
 } from "./project.ts";
 import type {
+  NilusCompleteTaskInput,
+  NilusCompleteTaskResult,
+  NilusDocument,
+  NilusListDomainEntriesInput,
+  NilusListDomainEntriesResult,
+  NilusListTasksInput,
+  NilusPrepareTaskCompletionInput,
+  NilusReadDocumentInput,
+  NilusStartupSnapshot,
+  NilusStartupSnapshotInput,
+  NilusTaskCompletionPreview,
+  NilusTaskContext,
+  NilusTaskContextInput,
+  NilusTaskRecord,
+} from "./nilus.ts";
+import type {
   ServerConfig,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
@@ -251,8 +267,13 @@ export interface EnvironmentApi {
   nilus: {
     getStartupSnapshot: (input: NilusStartupSnapshotInput) => Promise<NilusStartupSnapshot>;
     listTasks: (input: NilusListTasksInput) => Promise<ReadonlyArray<NilusTaskRecord>>;
+    getTaskContext: (input: NilusTaskContextInput) => Promise<NilusTaskContext>;
     listDomainEntries: (input: NilusListDomainEntriesInput) => Promise<NilusListDomainEntriesResult>;
     readDocument: (input: NilusReadDocumentInput) => Promise<NilusDocument>;
+    prepareTaskCompletion: (
+      input: NilusPrepareTaskCompletionInput,
+    ) => Promise<NilusTaskCompletionPreview>;
+    completeTask: (input: NilusCompleteTaskInput) => Promise<NilusCompleteTaskResult>;
   };
   git: {
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;

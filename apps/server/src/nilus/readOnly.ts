@@ -1,14 +1,22 @@
+import { execFileSync } from "node:child_process";
 import * as NFS from "node:fs";
 import * as path from "node:path";
 
 import { Effect } from "effect";
 import type {
+  NilusCompleteTaskResult,
   NilusDocument,
   NilusDomain,
   NilusDomainEntry,
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
+  NilusPrepareTaskCompletionInput,
+  NilusTaskCompletionPreview,
+  NilusTaskContext,
+  NilusTaskContextCommit,
+  NilusTaskContextDocument,
+  NilusTaskContextInput,
   NilusTaskRecord,
   NilusStartupSnapshot,
   NilusStartupSnapshotInput,
@@ -64,6 +72,40 @@ export const listNilusTasks = (input: NilusListTasksInput) =>
     return input.limit ? tasks.slice(0, input.limit) : tasks;
   });
 
+export const getNilusTaskContext = (input: NilusTaskContextInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const selection = yield* selectOpenTask(repoRoot, input.taskNumber);
+    const openTasks = yield* readTasks({
+      repoRoot,
+      status: "open",
+    });
+    const doneTasks = yield* readTasks({
+      repoRoot,
+      status: "done",
+    });
+    const projects = selection.task.project ? [`+${selection.task.project}`] : [];
+    const continuityThread = deriveContinuityThread(selection.task);
+    const relatedDocuments = yield* findRelatedDocuments(repoRoot, continuityThread, projects);
+
+    return {
+      task: selection.task,
+      continuityThread,
+      projects,
+      relatedOpenTasks: openTasks.filter((task) =>
+        taskMatchesContext(task, continuityThread, projects),
+      ),
+      recentDoneTasks: doneTasks
+        .filter((task) => taskMatchesContext(task, continuityThread, projects))
+        .slice(-5),
+      relatedDocuments: relatedDocuments.slice(0, 12),
+      recentCommits: readRecentCommits(
+        repoRoot,
+        relatedDocuments.map((entry) => entry.path),
+      ),
+    } satisfies NilusTaskContext;
+  });
+
 export const listNilusDomainEntries = (input: NilusListDomainEntriesInput) =>
   Effect.gen(function* () {
     const repoRoot = yield* assertNilusRepo(input.repoRoot);
@@ -83,11 +125,9 @@ export const readNilusDocument = (input: { repoRoot: string; path: string }) =>
     const absolutePath = yield* resolveRepoRelativePath(repoRoot, input.path);
     const domain = classifyDomain(input.path);
     if (domain === null) {
-      return yield* Effect.fail(
-        new NilusReadError({
-          message: "Document path must stay within the Nilus read-only prototype domains.",
-        }),
-      );
+      return yield* new NilusReadError({
+        message: "Document path must stay within the Nilus read-only prototype domains.",
+      });
     }
     const contents = yield* readTextFile(absolutePath);
     return {
@@ -98,6 +138,48 @@ export const readNilusDocument = (input: { repoRoot: string; path: string }) =>
       contents,
     } satisfies NilusDocument;
   });
+
+export const prepareNilusTaskCompletion = (input: NilusPrepareTaskCompletionInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const selection = yield* selectOpenTask(repoRoot, input.taskNumber);
+    return buildTaskCompletionPreview(selection) satisfies NilusTaskCompletionPreview;
+  });
+
+export const completeNilusTask = (input: { repoRoot: string; taskNumber: number }) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const selection = yield* selectOpenTask(repoRoot, input.taskNumber);
+    const preview = buildTaskCompletionPreview(selection);
+
+    const todoPath = path.join(repoRoot, "todo.txt");
+    const donePath = path.join(repoRoot, "done.txt");
+    const todoLines = yield* readWritableLines(todoPath);
+    const doneLines = yield* readWritableLines(donePath);
+
+    todoLines.splice(selection.lineNumber - 1, 1);
+    if (preview.nextTaskLine) {
+      todoLines.push(preview.nextTaskLine);
+    }
+    doneLines.push(preview.completedLine);
+
+    yield* writeLines(todoPath, todoLines);
+    yield* writeLines(donePath, doneLines);
+
+    return {
+      completedLine: preview.completedLine,
+      nextTaskLine: preview.nextTaskLine,
+      affectedFiles: preview.affectedFiles,
+    } satisfies NilusCompleteTaskResult;
+  });
+
+interface OpenTaskSelection {
+  readonly lineNumber: number;
+  readonly line: string;
+  readonly priority: string;
+  readonly payload: string;
+  readonly task: NilusTaskRecord;
+}
 
 const listDomainEntries = (input: { repoRoot: string; domain: NilusDomain }) =>
   Effect.gen(function* () {
@@ -151,11 +233,9 @@ const assertNilusRepo = (repoRoot: string) =>
     for (const requiredPath of requiredPaths) {
       const exists = NFS.existsSync(path.join(resolved, requiredPath));
       if (!exists) {
-        return yield* Effect.fail(
-          new NilusReadError({
-            message: `Selected folder is not a Nilus repo. Missing ${requiredPath}.`,
-          }),
-        );
+        return yield* new NilusReadError({
+          message: `Selected folder is not a Nilus repo. Missing ${requiredPath}.`,
+        });
       }
     }
     return resolved;
@@ -166,11 +246,9 @@ const resolveRepoRelativePath = (repoRoot: string, relativePath: string) =>
     const resolved = path.resolve(repoRoot, relativePath);
     const normalizedRoot = `${repoRoot}${path.sep}`;
     if (resolved !== repoRoot && !resolved.startsWith(normalizedRoot)) {
-      return yield* Effect.fail(
-        new NilusReadError({
-          message: "Requested document path must stay within the selected Nilus repo.",
-        }),
-      );
+      return yield* new NilusReadError({
+        message: "Requested document path must stay within the selected Nilus repo.",
+      });
     }
     return resolved;
   });
@@ -209,16 +287,15 @@ function parseTaskLines(
     }
 
     counter += 1;
-    const parsedRemainder = parseTaskRemainder(match[3]);
-    const createdAt = match[2];
-    const completedAt = status === "done" ? match[1] : null;
-
-    parsed.push({
+    const primary = match[1] ?? "";
+    const createdAt = match[2] ?? "";
+    const remainder = match[3] ?? "";
+    const parsedRemainder = parseTaskRemainder(remainder);
+    const baseTask = {
       number: counter,
       status,
-      priority: status === "open" ? match[1] : undefined,
       createdAt,
-      completedAt,
+      completedAt: status === "done" ? primary : null,
       description: parsedRemainder.description,
       project: parsedRemainder.project,
       owner: parsedRemainder.owner,
@@ -227,7 +304,16 @@ function parseTaskLines(
       after: parsedRemainder.after,
       waiting: parsedRemainder.waiting,
       raw: line,
-    });
+    } satisfies Omit<NilusTaskRecord, "priority">;
+
+    parsed.push(
+      status === "open"
+        ? {
+            ...baseTask,
+            priority: primary,
+          }
+        : baseTask,
+    );
   }
 
   return parsed;
@@ -279,6 +365,301 @@ function parseTaskRemainder(input: string) {
     after,
     waiting,
   };
+}
+
+const selectOpenTask = (repoRoot: string, taskNumber: number) =>
+  Effect.gen(function* () {
+    const todoLines = yield* readLines(path.join(repoRoot, "todo.txt"));
+    let counter = 0;
+
+    for (const line of todoLines) {
+      const match = TASK_OPEN_PATTERN.exec(line);
+      if (!match) {
+        continue;
+      }
+
+      counter += 1;
+      if (counter !== taskNumber) {
+        continue;
+      }
+
+      const priority = match[1] ?? "";
+      const createdAt = match[2] ?? "";
+      const remainder = match[3] ?? "";
+      const parsedRemainder = parseTaskRemainder(remainder);
+      return {
+        lineNumber: findRawLineNumber(path.join(repoRoot, "todo.txt"), line),
+        line,
+        priority,
+        payload: line.slice(line.indexOf(") ") + 2),
+        task: {
+          number: taskNumber,
+          status: "open",
+          priority,
+          createdAt,
+          completedAt: null,
+          description: parsedRemainder.description,
+          project: parsedRemainder.project,
+          owner: parsedRemainder.owner,
+          thread: parsedRemainder.thread,
+          recur: parsedRemainder.recur,
+          after: parsedRemainder.after,
+          waiting: parsedRemainder.waiting,
+          raw: line,
+        } satisfies NilusTaskRecord,
+        } satisfies OpenTaskSelection;
+    }
+
+    return yield* new NilusReadError({
+      message: `No open task numbered ${taskNumber}.`,
+    });
+  });
+
+function buildTaskCompletionPreview(selection: OpenTaskSelection): NilusTaskCompletionPreview {
+  return {
+    task: selection.task,
+    completedLine: `x ${formatLocalDate(new Date())} ${selection.payload}`,
+    nextTaskLine: buildRecurringNextTaskLine(selection.priority, selection.payload),
+    affectedFiles: ["todo.txt", "done.txt"],
+  };
+}
+
+function deriveContinuityThread(task: NilusTaskRecord): string | null {
+  if (task.thread) {
+    return task.thread;
+  }
+  if (task.project) {
+    return projectSlug(task.project);
+  }
+  return null;
+}
+
+function projectSlug(project: string) {
+  return project
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .toLowerCase();
+}
+
+function taskMatchesContext(
+  task: NilusTaskRecord,
+  continuityThread: string | null,
+  projects: readonly string[],
+) {
+  if (continuityThread && task.thread === continuityThread) {
+    return true;
+  }
+  if (task.project && projects.includes(`+${task.project}`)) {
+    return true;
+  }
+  return false;
+}
+
+const findRelatedDocuments = (
+  repoRoot: string,
+  continuityThread: string | null,
+  projects: readonly string[],
+) =>
+  Effect.gen(function* () {
+    const patterns = buildContextPatterns(continuityThread, projects);
+    if (patterns.length === 0) {
+      return [] satisfies NilusTaskContextDocument[];
+    }
+
+    const allEntries = [
+      ...(yield* listDomainEntries({ repoRoot, domain: "talk" })).entries.map((entry) => ({
+        domain: "talk" as const,
+        ...entry,
+      })),
+      ...(yield* listDomainEntries({ repoRoot, domain: "partners" })).entries.map((entry) => ({
+        domain: "partners" as const,
+        ...entry,
+      })),
+      ...(yield* listDomainEntries({ repoRoot, domain: "issues" })).entries.map((entry) => ({
+        domain: "issues" as const,
+        ...entry,
+      })),
+      ...(yield* listDomainEntries({ repoRoot, domain: "knowledge" })).entries.map((entry) => ({
+        domain: "knowledge" as const,
+        ...entry,
+      })),
+    ];
+
+    const matches = allEntries.filter((entry) => {
+      if (patterns.some((pattern) => entry.path.includes(pattern) || entry.title.includes(pattern))) {
+        return true;
+      }
+      try {
+        const contents = NFS.readFileSync(path.join(repoRoot, entry.path), "utf8");
+        return patterns.some((pattern) => contents.includes(pattern));
+      } catch {
+        return false;
+      }
+    });
+
+    const uniqueByPath = new Map<string, NilusTaskContextDocument>();
+    for (const entry of matches) {
+      uniqueByPath.set(entry.path, {
+        path: entry.path,
+        title: entry.title,
+        domain: entry.domain,
+      });
+    }
+
+    return [...uniqueByPath.values()];
+  });
+
+function buildContextPatterns(continuityThread: string | null, projects: readonly string[]) {
+  const patterns = new Set<string>();
+  if (continuityThread) {
+    patterns.add(continuityThread);
+  }
+  for (const project of projects) {
+    const raw = project.replace(/^\+/, "");
+    patterns.add(project);
+    patterns.add(raw);
+    patterns.add(projectSlug(raw));
+  }
+  return [...patterns].filter((pattern) => pattern.length > 0);
+}
+
+function readRecentCommits(repoRoot: string, relativePaths: readonly string[]): NilusTaskContextCommit[] {
+  if (relativePaths.length === 0) {
+    return [];
+  }
+
+  try {
+    const output = execFileSync(
+      "git",
+      ["-C", repoRoot, "log", "--oneline", "-n", "4", "--", ...relativePaths, "todo.txt", "done.txt"],
+      {
+        encoding: "utf8",
+      },
+    );
+    return output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const firstSpace = line.indexOf(" ");
+        if (firstSpace === -1) {
+          return null;
+        }
+        return {
+          hash: line.slice(0, firstSpace),
+          subject: line.slice(firstSpace + 1).trim(),
+        } satisfies NilusTaskContextCommit;
+      })
+      .filter((entry): entry is NilusTaskContextCommit => entry !== null);
+  } catch {
+    return [];
+  }
+}
+
+const readWritableLines = (filePath: string) =>
+  readTextFile(filePath).pipe(
+    Effect.map((contents) => {
+      const lines = contents.split(/\r?\n/);
+      if (lines.at(-1) === "") {
+        lines.pop();
+      }
+      return lines;
+    }),
+  );
+
+const writeLines = (filePath: string, lines: readonly string[]) =>
+  Effect.try({
+    try: () => {
+      NFS.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+    },
+    catch: (cause) =>
+      new NilusReadError({
+        message: `Failed to write ${path.basename(filePath)}.`,
+        cause,
+      }),
+  });
+
+function findRawLineNumber(filePath: string, targetLine: string) {
+  const rawLines = NFS.readFileSync(filePath, "utf8").split(/\r?\n/);
+  let counter = 0;
+  for (const [index, line] of rawLines.entries()) {
+    if (!TASK_OPEN_PATTERN.test(line)) {
+      continue;
+    }
+    counter += 1;
+    if (line === targetLine) {
+      return index + 1;
+    }
+  }
+  return counter;
+}
+
+function formatLocalDate(value: Date) {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildRecurringNextTaskLine(priority: string, payload: string): string | null {
+  const recurMatch = payload.match(/\brecur:(daily|weekly|monthly)\b/);
+  if (!recurMatch) {
+    return null;
+  }
+
+  const recur = recurMatch[1] ?? null;
+  if (recur === null) {
+    return null;
+  }
+
+  const days = recurDaysFor(recur);
+  if (days === null) {
+    return null;
+  }
+
+  const firstSpace = payload.indexOf(" ");
+  if (firstSpace === -1) {
+    return null;
+  }
+
+  const createdAt = payload.slice(0, firstSpace);
+  let nextPayload = payload.slice(firstSpace + 1);
+  const newCreatedAt = advanceDateString(createdAt, days);
+
+  nextPayload = nextPayload.replace(
+    /\bafter:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z)\b/,
+    (_match, value) => `after:${advanceUtcDateTimeString(value, days)}`,
+  );
+
+  return `(${priority}) ${newCreatedAt} ${nextPayload}`;
+}
+
+function recurDaysFor(recur: string) {
+  switch (recur) {
+    case "daily":
+      return 1;
+    case "weekly":
+      return 7;
+    case "monthly":
+      return 30;
+    default:
+      return null;
+  }
+}
+
+function advanceDateString(value: string, days: number) {
+  const [yearText = "0", monthText = "1", dayText = "1"] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const next = new Date(Date.UTC(year, month - 1, day));
+  next.setUTCDate(next.getUTCDate() + days);
+  return `${next.getUTCFullYear()}-${`${next.getUTCMonth() + 1}`.padStart(2, "0")}-${`${next.getUTCDate()}`.padStart(2, "0")}`;
+}
+
+function advanceUtcDateTimeString(value: string, days: number) {
+  const next = new Date(value);
+  next.setUTCDate(next.getUTCDate() + days);
+  return `${next.getUTCFullYear()}-${`${next.getUTCMonth() + 1}`.padStart(2, "0")}-${`${next.getUTCDate()}`.padStart(2, "0")}T${`${next.getUTCHours()}`.padStart(2, "0")}:${`${next.getUTCMinutes()}`.padStart(2, "0")}Z`;
 }
 
 function collectMarkdownEntries(directoryPath: string): string[] {
@@ -339,7 +720,7 @@ function readFrontmatterValue(contents: string, key: string): string | null {
 
   const lines = contents.split(/\r?\n/);
   for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index];
+    const line = lines[index] ?? "";
     if (line.trim() === "---") {
       return null;
     }

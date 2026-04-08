@@ -55,8 +55,11 @@ import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptR
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import {
   getNilusStartupSnapshot,
+  getNilusTaskContext,
   listNilusDomainEntries,
   listNilusTasks,
+  completeNilusTask,
+  prepareNilusTaskCompletion,
   readNilusDocument,
 } from "./nilus/readOnly.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
@@ -817,6 +820,10 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.nilusListTasks, listNilusTasks(input), {
             "rpc.aggregate": "nilus",
           }),
+        [WS_METHODS.nilusGetTaskContext]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusGetTaskContext, getNilusTaskContext(input), {
+            "rpc.aggregate": "nilus",
+          }),
         [WS_METHODS.nilusListDomainEntries]: (input) =>
           observeRpcEffect(WS_METHODS.nilusListDomainEntries, listNilusDomainEntries(input), {
             "rpc.aggregate": "nilus",
@@ -836,6 +843,18 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             ),
             { "rpc.aggregate": "nilus" },
           ),
+        [WS_METHODS.nilusPrepareTaskCompletion]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.nilusPrepareTaskCompletion,
+            prepareNilusTaskCompletion(input),
+            {
+              "rpc.aggregate": "nilus",
+            },
+          ),
+        [WS_METHODS.nilusCompleteTask]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusCompleteTask, completeNilusTask(input), {
+            "rpc.aggregate": "nilus",
+          }),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, open.openInEditor(input), {
             "rpc.aggregate": "workspace",

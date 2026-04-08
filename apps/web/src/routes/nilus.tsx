@@ -1,21 +1,32 @@
-import { BookOpenIcon, FolderSearchIcon, RefreshCwIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  CheckCircle2Icon,
+  FolderSearchIcon,
+  GitCommitHorizontalIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Schema from "effect/Schema";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NilusDomain, NilusTaskRecord } from "@t3tools/contracts";
 
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Button } from "../components/ui/button";
+import { toastManager } from "../components/ui/toast";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import {
+  nilusCompleteTaskMutationOptions,
   nilusDocumentQueryOptions,
   nilusDomainEntriesQueryOptions,
   nilusStartupSnapshotQueryOptions,
+  nilusTaskCompletionPreviewQueryOptions,
+  nilusTaskContextQueryOptions,
   nilusTasksQueryOptions,
 } from "../lib/nilusReactQuery";
 import { readLocalApi } from "../localApi";
 import { isElectron } from "../env";
+import { readNativeApi } from "../nativeApi";
 
 const NILUS_REPO_STORAGE_KEY = "t3code:nilus:repo-root:v1";
 const NilusRepoRootSchema = Schema.NullOr(Schema.String);
@@ -23,6 +34,7 @@ const MEMORY_VIEWS: readonly NilusDomain[] = ["talk", "partners", "issues", "kno
 type NilusView = "overview" | "tasks" | NilusDomain;
 
 function NilusRouteView() {
+  const queryClient = useQueryClient();
   const [repoRoot, setRepoRoot] = useLocalStorage<string | null, string | null>(
     NILUS_REPO_STORAGE_KEY,
     null,
@@ -30,6 +42,7 @@ function NilusRouteView() {
   );
   const [draftRepoRoot, setDraftRepoRoot] = useState(repoRoot ?? "");
   const [view, setView] = useState<NilusView>("overview");
+  const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
 
   const startupQuery = useQuery(
@@ -62,10 +75,47 @@ function NilusRouteView() {
       enabled: repoRoot !== null && selectedDocumentPath !== null,
     }),
   );
+  const taskContextQuery = useQuery(
+    nilusTaskContextQueryOptions({
+      repoRoot,
+      taskNumber: selectedTaskNumber,
+      enabled: repoRoot !== null && selectedTaskNumber !== null && view === "tasks",
+    }),
+  );
+  const taskCompletionPreviewQuery = useQuery(
+    nilusTaskCompletionPreviewQueryOptions({
+      repoRoot,
+      taskNumber: selectedTaskNumber,
+      enabled: repoRoot !== null && selectedTaskNumber !== null && view === "tasks",
+    }),
+  );
+  const completeTaskMutation = useMutation(
+    nilusCompleteTaskMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
 
   useEffect(() => {
     setDraftRepoRoot(repoRoot ?? "");
   }, [repoRoot]);
+
+  useEffect(() => {
+    const openTasks = tasksQuery.data ?? [];
+    if (openTasks.length === 0) {
+      setSelectedTaskNumber(null);
+      return;
+    }
+
+    if (selectedTaskNumber === null) {
+      setSelectedTaskNumber(openTasks[0]?.number ?? null);
+      return;
+    }
+
+    if (!openTasks.some((task) => task.number === selectedTaskNumber)) {
+      setSelectedTaskNumber(openTasks[0]?.number ?? null);
+    }
+  }, [selectedTaskNumber, tasksQuery.data]);
 
   useEffect(() => {
     setSelectedDocumentPath(null);
@@ -108,14 +158,57 @@ function NilusRouteView() {
   const refreshAll = () => {
     void startupQuery.refetch();
     void tasksQuery.refetch();
+    void taskContextQuery.refetch();
+    void taskCompletionPreviewQuery.refetch();
     void domainEntriesQuery.refetch();
     void documentQuery.refetch();
   };
+
+  const selectedTask =
+    (tasksQuery.data ?? []).find((task) => task.number === selectedTaskNumber) ?? null;
 
   const pickFolder = async () => {
     const folder = await readLocalApi()?.dialogs.pickFolder();
     if (folder) {
       setRepoRoot(folder);
+    }
+  };
+
+  const handleCompleteTask = async () => {
+    if (!selectedTask || !repoRoot) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Complete task #${selectedTask.number}?`,
+          "This updates todo.txt and done.txt in the selected Nilus repo.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const result = await completeTaskMutation.mutateAsync({
+        taskNumber: selectedTask.number,
+      });
+      toastManager.add({
+        type: "success",
+        title: `Completed task #${selectedTask.number}`,
+        description: result.nextTaskLine
+          ? "The next recurring task instance was also created."
+          : "todo.txt and done.txt were updated.",
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to complete task",
+        description: error instanceof Error ? error.message : "Unknown Nilus task error.",
+      });
     }
   };
 
@@ -156,12 +249,12 @@ function NilusRouteView() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <div className="flex-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Read-only Nilus browsing
+                  Nilus workflow prototype
                 </p>
                 <h1 className="mt-2 text-xl font-semibold tracking-tight">Browse Nilus repo memory</h1>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  This prototype reads tasks, talk-log notes, partner files, issues, and knowledge
-                  docs from a selected Nilus repo without editing anything.
+                  This prototype now combines read-only Nilus memory browsing with task context and
+                  completion flows for the selected repo.
                 </p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -247,11 +340,24 @@ function NilusRouteView() {
                           Current queue from <span className="font-mono">todo.txt</span>
                         </p>
                       </div>
-                      <Button size="xs" variant="outline" onClick={() => setView("tasks")}>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => {
+                          setView("tasks");
+                          setSelectedTaskNumber((tasksQuery.data ?? [])[0]?.number ?? null);
+                        }}
+                      >
                         View all
                       </Button>
                     </div>
-                    <TaskList tasks={tasksQuery.data ?? []} />
+                    <TaskList
+                      tasks={tasksQuery.data ?? []}
+                      onSelect={(task) => {
+                        setSelectedTaskNumber(task.number);
+                        setView("tasks");
+                      }}
+                    />
                   </section>
 
                   <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
@@ -297,17 +403,51 @@ function NilusRouteView() {
               ) : null}
 
               {view === "tasks" ? (
-                <section className="mt-4 rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold">Tasks</h2>
-                      <p className="text-xs text-muted-foreground">
-                        Read-only task queue with Nilus metadata.
-                      </p>
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(19rem,0.78fr)_minmax(0,1.22fr)]">
+                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold">Tasks</h2>
+                        <p className="text-xs text-muted-foreground">
+                          Context-aware task workflow prototype for Nilus.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <TaskList tasks={tasksQuery.data ?? []} dense={false} />
-                </section>
+                    <TaskList
+                      tasks={tasksQuery.data ?? []}
+                      dense={false}
+                      selectedTaskNumber={selectedTaskNumber}
+                      onSelect={(task) => setSelectedTaskNumber(task.number)}
+                    />
+                  </section>
+
+                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                    {selectedTask ? (
+                      <TaskWorkflowPanel
+                        task={selectedTask}
+                        context={taskContextQuery.data ?? null}
+                        preview={taskCompletionPreviewQuery.data ?? null}
+                        isLoadingContext={taskContextQuery.isLoading}
+                        isLoadingPreview={taskCompletionPreviewQuery.isLoading}
+                        isCompleting={completeTaskMutation.isPending}
+                        onComplete={() => void handleCompleteTask()}
+                        onOpenDocument={(documentPath) => {
+                          const domain = taskContextQuery.data?.relatedDocuments.find(
+                            (entry) => entry.path === documentPath,
+                          )?.domain;
+                          if (domain) {
+                            setView(domain);
+                            setSelectedDocumentPath(documentPath);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
+                        Select a task to inspect its continuity context.
+                      </div>
+                    )}
+                  </section>
+                </div>
               ) : null}
 
               {activeDomain ? (
@@ -395,7 +535,12 @@ function NilusViewButton(props: { active: boolean; label: string; onClick: () =>
   );
 }
 
-function TaskList(props: { tasks: readonly NilusTaskRecord[]; dense?: boolean }) {
+function TaskList(props: {
+  tasks: readonly NilusTaskRecord[];
+  dense?: boolean;
+  selectedTaskNumber?: number | null;
+  onSelect?: (task: NilusTaskRecord) => void;
+}) {
   if (props.tasks.length === 0) {
     return (
       <div className="mt-4 rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
@@ -407,9 +552,15 @@ function TaskList(props: { tasks: readonly NilusTaskRecord[]; dense?: boolean })
   return (
     <div className={props.dense === false ? "mt-4 space-y-3" : "mt-4 space-y-2"}>
       {props.tasks.map((task) => (
-        <article
+        <button
           key={`${task.number}-${task.description}`}
-          className="rounded-xl border border-border bg-background/70 px-3 py-3"
+          type="button"
+          className={`block w-full rounded-xl border px-3 py-3 text-left ${
+            props.selectedTaskNumber === task.number
+              ? "border-primary/60 bg-primary/6"
+              : "border-border bg-background/70 hover:bg-accent/30"
+          }`}
+          onClick={() => props.onSelect?.(task)}
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -424,8 +575,258 @@ function TaskList(props: { tasks: readonly NilusTaskRecord[]; dense?: boolean })
               </div>
             </div>
           </div>
-        </article>
+        </button>
       ))}
+    </div>
+  );
+}
+
+function TaskWorkflowPanel(props: {
+  task: NilusTaskRecord;
+  context: {
+    continuityThread: string | null;
+    projects: readonly string[];
+    relatedOpenTasks: readonly NilusTaskRecord[];
+    recentDoneTasks: readonly NilusTaskRecord[];
+    relatedDocuments: readonly { path: string; title: string; domain: NilusDomain }[];
+    recentCommits: readonly { hash: string; subject: string }[];
+  } | null;
+  preview: {
+    completedLine: string;
+    nextTaskLine: string | null;
+    affectedFiles: readonly string[];
+  } | null;
+  isLoadingContext: boolean;
+  isLoadingPreview: boolean;
+  isCompleting: boolean;
+  onComplete: () => void;
+  onOpenDocument: (documentPath: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-border bg-background/60 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Task #{props.task.number}
+            </p>
+            <h2 className="mt-2 text-lg font-semibold leading-7">{props.task.description}</h2>
+          </div>
+          <Button size="sm" onClick={props.onComplete} disabled={props.isCompleting}>
+            <CheckCircle2Icon className="size-4" />
+            {props.isCompleting ? "Completing..." : "Complete task"}
+          </Button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+          <MetadataPill label={`created:${props.task.createdAt}`} />
+          {props.task.priority ? <MetadataPill label={`priority:${props.task.priority}`} /> : null}
+          {props.task.owner ? <MetadataPill label={`@${props.task.owner}`} /> : null}
+          {props.task.project ? <MetadataPill label={`+${props.task.project}`} /> : null}
+          {props.task.thread ? <MetadataPill label={`thread:${props.task.thread}`} /> : null}
+          {props.task.after ? <MetadataPill label={`after:${props.task.after}`} /> : null}
+          {props.task.recur ? <MetadataPill label={`recur:${props.task.recur}`} /> : null}
+          {props.task.waiting ? <MetadataPill label={`waiting:${props.task.waiting}`} /> : null}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-background/60 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Task context</h3>
+            <p className="text-xs text-muted-foreground">
+              Mirrors the continuity model behind <span className="font-mono">nilus task context</span>.
+            </p>
+          </div>
+        </div>
+
+        {props.isLoadingContext && props.context === null ? (
+          <div className="mt-4 text-sm text-muted-foreground">Loading task context...</div>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <ContextStat
+                label="Continuity thread"
+                value={props.context?.continuityThread ?? "none"}
+              />
+              <ContextStat
+                label="Projects"
+                value={props.context && props.context.projects.length > 0
+                  ? props.context.projects.join(", ")
+                  : "none"}
+              />
+              <ContextStat
+                label="Related open tasks"
+                value={String(props.context?.relatedOpenTasks.length ?? 0)}
+              />
+              <ContextStat
+                label="Recent done tasks"
+                value={String(props.context?.recentDoneTasks.length ?? 0)}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <ContextListCard title="Related open tasks">
+                {(props.context?.relatedOpenTasks.length ?? 0) > 0 ? (
+                  props.context?.relatedOpenTasks.map((task) => (
+                    <div key={`open-${task.number}`} className="rounded-xl border border-border bg-card/50 px-3 py-2">
+                      <p className="text-sm font-medium">{task.description}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        #{task.number}
+                        {task.thread ? ` · thread:${task.thread}` : ""}
+                        {task.project ? ` · +${task.project}` : ""}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyContext label="No related open tasks found." />
+                )}
+              </ContextListCard>
+
+              <ContextListCard title="Recent completed tasks">
+                {(props.context?.recentDoneTasks.length ?? 0) > 0 ? (
+                  props.context?.recentDoneTasks.map((task) => (
+                    <div key={`done-${task.number}-${task.raw}`} className="rounded-xl border border-border bg-card/50 px-3 py-2">
+                      <p className="text-sm font-medium">{task.description}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {task.completedAt ? `completed:${task.completedAt}` : "completed"}
+                        {task.recur ? ` · recur:${task.recur}` : ""}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyContext label="No recent completed tasks found." />
+                )}
+              </ContextListCard>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <ContextListCard title="Related documents">
+                {(props.context?.relatedDocuments.length ?? 0) > 0 ? (
+                  props.context?.relatedDocuments.map((document) => (
+                    <button
+                      key={document.path}
+                      type="button"
+                      className="block w-full rounded-xl border border-border bg-card/50 px-3 py-2 text-left hover:bg-accent/30"
+                      onClick={() => props.onOpenDocument(document.path)}
+                    >
+                      <p className="text-sm font-medium">{document.title}</p>
+                      <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                        {document.path}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <EmptyContext label="No related documents found." />
+                )}
+              </ContextListCard>
+
+              <ContextListCard title="Recent commits">
+                {(props.context?.recentCommits.length ?? 0) > 0 ? (
+                  props.context?.recentCommits.map((commit) => (
+                    <div key={commit.hash} className="rounded-xl border border-border bg-card/50 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <GitCommitHorizontalIcon className="size-3.5 text-muted-foreground" />
+                        <p className="font-mono text-[11px] text-muted-foreground">{commit.hash}</p>
+                      </div>
+                      <p className="mt-1 text-sm">{commit.subject}</p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyContext label="No recent commits found." />
+                )}
+              </ContextListCard>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-background/60 p-4">
+        <div>
+          <h3 className="text-sm font-semibold">Completion preview</h3>
+          <p className="text-xs text-muted-foreground">
+            Shows the Nilus-managed change before writing to <span className="font-mono">todo.txt</span> and <span className="font-mono">done.txt</span>.
+          </p>
+        </div>
+        {props.isLoadingPreview && props.preview === null ? (
+          <div className="mt-4 text-sm text-muted-foreground">Preparing completion preview...</div>
+        ) : props.preview ? (
+          <div className="mt-4 space-y-3">
+            <PreviewBlock
+              label="done.txt append"
+              contents={props.preview.completedLine}
+            />
+            {props.preview.nextTaskLine ? (
+              <PreviewBlock
+                label="todo.txt recurring next instance"
+                contents={props.preview.nextTaskLine}
+              />
+            ) : (
+              <PreviewBlock
+                label="todo.txt recurring next instance"
+                contents="No recurring follow-up will be created."
+                muted
+              />
+            )}
+            <div className="text-[11px] text-muted-foreground">
+              Affected files: {props.preview.affectedFiles.join(", ")}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 text-sm text-muted-foreground">No completion preview available.</div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function MetadataPill(props: { label: string }) {
+  return (
+    <span className="rounded-full border border-border bg-card/70 px-2 py-1">{props.label}</span>
+  );
+}
+
+function ContextStat(props: { label: string; value: string }) {
+  return (
+    <article className="rounded-2xl border border-border bg-card/50 px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {props.label}
+      </p>
+      <p className="mt-2 text-sm font-medium leading-6">{props.value}</p>
+    </article>
+  );
+}
+
+function ContextListCard(props: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-border bg-card/50 p-3">
+      <h4 className="text-sm font-semibold">{props.title}</h4>
+      <div className="mt-3 space-y-2">{props.children}</div>
+    </section>
+  );
+}
+
+function EmptyContext(props: { label: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+      {props.label}
+    </div>
+  );
+}
+
+function PreviewBlock(props: { label: string; contents: string; muted?: boolean }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {props.label}
+      </p>
+      <pre
+        className={`mt-2 overflow-auto whitespace-pre-wrap rounded-xl p-3 text-xs leading-6 ${
+          props.muted ? "bg-card/50 text-muted-foreground" : "bg-card text-foreground"
+        }`}
+      >
+        {props.contents}
+      </pre>
     </div>
   );
 }
