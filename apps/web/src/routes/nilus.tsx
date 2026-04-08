@@ -55,7 +55,7 @@ function NilusRouteView() {
       repoRoot,
       status: "open",
       enabled: repoRoot !== null && (view === "overview" || view === "tasks"),
-      limit: view === "overview" ? 12 : 80,
+      ...(view === "overview" ? { limit: 12 } : {}),
     }),
   );
 
@@ -409,7 +409,7 @@ function NilusRouteView() {
                       <div>
                         <h2 className="text-sm font-semibold">Tasks</h2>
                         <p className="text-xs text-muted-foreground">
-                          Context-aware task workflow prototype for Nilus.
+                          Showing all {startupQuery.data?.openTaskCount ?? tasksQuery.data?.length ?? 0} open tasks from <span className="font-mono">todo.txt</span>.
                         </p>
                       </div>
                     </div>
@@ -427,8 +427,21 @@ function NilusRouteView() {
                         task={selectedTask}
                         context={taskContextQuery.data ?? null}
                         preview={taskCompletionPreviewQuery.data ?? null}
-                        isLoadingContext={taskContextQuery.isLoading}
-                        isLoadingPreview={taskCompletionPreviewQuery.isLoading}
+                        contextError={
+                          taskContextQuery.error instanceof Error
+                            ? taskContextQuery.error.message
+                            : null
+                        }
+                        previewError={
+                          taskCompletionPreviewQuery.error instanceof Error
+                            ? taskCompletionPreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingContext={taskContextQuery.isPending || taskContextQuery.isFetching}
+                        isLoadingPreview={
+                          taskCompletionPreviewQuery.isPending ||
+                          taskCompletionPreviewQuery.isFetching
+                        }
                         isCompleting={completeTaskMutation.isPending}
                         onComplete={() => void handleCompleteTask()}
                         onOpenDocument={(documentPath) => {
@@ -596,6 +609,8 @@ function TaskWorkflowPanel(props: {
     nextTaskLine: string | null;
     affectedFiles: readonly string[];
   } | null;
+  contextError: string | null;
+  previewError: string | null;
   isLoadingContext: boolean;
   isLoadingPreview: boolean;
   isCompleting: boolean;
@@ -640,7 +655,11 @@ function TaskWorkflowPanel(props: {
           </div>
         </div>
 
-        {props.isLoadingContext && props.context === null ? (
+        {props.contextError ? (
+          <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+            {props.contextError}
+          </div>
+        ) : props.isLoadingContext && props.context === null ? (
           <div className="mt-4 text-sm text-muted-foreground">Loading task context...</div>
         ) : (
           <>
@@ -748,7 +767,11 @@ function TaskWorkflowPanel(props: {
             Shows the Nilus-managed change before writing to <span className="font-mono">todo.txt</span> and <span className="font-mono">done.txt</span>.
           </p>
         </div>
-        {props.isLoadingPreview && props.preview === null ? (
+        {props.previewError ? (
+          <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+            {props.previewError}
+          </div>
+        ) : props.isLoadingPreview && props.preview === null ? (
           <div className="mt-4 text-sm text-muted-foreground">Preparing completion preview...</div>
         ) : props.preview ? (
           <div className="mt-4 space-y-3">
