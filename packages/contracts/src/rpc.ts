@@ -53,6 +53,8 @@ import {
   ProjectWriteFileResult,
 } from "./project";
 import {
+  NilusCreateTalkNoteInput,
+  NilusCreateTalkNoteResult,
   NilusCompleteTaskInput,
   NilusCompleteTaskResult,
   NilusDocument,
@@ -68,6 +70,8 @@ import {
   NilusTaskContext,
   NilusTaskContextInput,
   NilusTaskRecord,
+  NilusTalkNoteDraftInput,
+  NilusTalkNotePreview,
 } from "./nilus";
 import {
   TerminalClearInput,
@@ -104,6 +108,8 @@ export const WS_METHODS = {
   nilusReadDocument: "nilus.readDocument",
   nilusPrepareTaskCompletion: "nilus.prepareTaskCompletion",
   nilusCompleteTask: "nilus.completeTask",
+  nilusPrepareTalkNote: "nilus.prepareTalkNote",
+  nilusCreateTalkNote: "nilus.createTalkNote",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -224,6 +230,18 @@ export const WsNilusPrepareTaskCompletionRpc = Rpc.make(WS_METHODS.nilusPrepareT
 export const WsNilusCompleteTaskRpc = Rpc.make(WS_METHODS.nilusCompleteTask, {
   payload: NilusCompleteTaskInput,
   success: NilusCompleteTaskResult,
+  error: NilusReadError,
+});
+
+export const WsNilusPrepareTalkNoteRpc = Rpc.make(WS_METHODS.nilusPrepareTalkNote, {
+  payload: NilusTalkNoteDraftInput,
+  success: NilusTalkNotePreview,
+  error: NilusReadError,
+});
+
+export const WsNilusCreateTalkNoteRpc = Rpc.make(WS_METHODS.nilusCreateTalkNote, {
+  payload: NilusCreateTalkNoteInput,
+  success: NilusCreateTalkNoteResult,
   error: NilusReadError,
 });
 
@@ -415,6 +433,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsNilusReadDocumentRpc,
   WsNilusPrepareTaskCompletionRpc,
   WsNilusCompleteTaskRpc,
+  WsNilusPrepareTalkNoteRpc,
+  WsNilusCreateTalkNoteRpc,
   WsShellOpenInEditorRpc,
   WsSubscribeGitStatusRpc,
   WsGitPullRpc,

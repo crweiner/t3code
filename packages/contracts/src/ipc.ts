@@ -25,6 +25,8 @@ import type {
   ProjectWriteFileResult,
 } from "./project";
 import type {
+  NilusCreateTalkNoteInput,
+  NilusCreateTalkNoteResult,
   NilusDocument,
   NilusCompleteTaskInput,
   NilusCompleteTaskResult,
@@ -36,6 +38,8 @@ import type {
   NilusTaskContext,
   NilusTaskContextInput,
   NilusReadDocumentInput,
+  NilusTalkNoteDraftInput,
+  NilusTalkNotePreview,
   NilusStartupSnapshot,
   NilusStartupSnapshotInput,
   NilusTaskRecord,
@@ -167,6 +171,8 @@ export interface NativeApi {
       input: NilusPrepareTaskCompletionInput,
     ) => Promise<NilusTaskCompletionPreview>;
     completeTask: (input: NilusCompleteTaskInput) => Promise<NilusCompleteTaskResult>;
+    prepareTalkNote: (input: NilusTalkNoteDraftInput) => Promise<NilusTalkNotePreview>;
+    createTalkNote: (input: NilusCreateTalkNoteInput) => Promise<NilusCreateTalkNoteResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;

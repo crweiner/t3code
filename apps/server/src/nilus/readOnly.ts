@@ -4,10 +4,14 @@ import * as path from "node:path";
 
 import { Effect } from "effect";
 import type {
+  NilusCommitSafety,
+  NilusCreateTalkNoteResult,
   NilusCompleteTaskResult,
   NilusDocument,
   NilusDomain,
   NilusDomainEntry,
+  NilusTalkNoteDraftInput,
+  NilusTalkNotePreview,
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
@@ -173,6 +177,36 @@ export const completeNilusTask = (input: { repoRoot: string; taskNumber: number 
     } satisfies NilusCompleteTaskResult;
   });
 
+export const prepareNilusTalkNote = (input: NilusTalkNoteDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    return yield* buildTalkNotePreview(repoRoot, input);
+  });
+
+export const createNilusTalkNote = (input: NilusTalkNoteDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const preview = yield* buildTalkNotePreview(repoRoot, input);
+    const absolutePath = path.join(repoRoot, preview.path);
+
+    if (NFS.existsSync(absolutePath)) {
+      return yield* new NilusReadError({
+        message: `Talk note path ${preview.path} already exists. Refresh the draft and try again.`,
+      });
+    }
+
+    yield* writeTextFile(absolutePath, preview.contents);
+
+    return {
+      path: preview.path,
+      title: preview.title,
+      contents: preview.contents,
+      affectedFiles: preview.affectedFiles,
+      warnings: preview.warnings,
+      commitSafety: preview.commitSafety,
+    } satisfies NilusCreateTalkNoteResult;
+  });
+
 interface OpenTaskSelection {
   readonly lineNumber: number;
   readonly line: string;
@@ -180,6 +214,23 @@ interface OpenTaskSelection {
   readonly payload: string;
   readonly task: NilusTaskRecord;
 }
+
+const buildTalkNotePreview = (repoRoot: string, input: NilusTalkNoteDraftInput) =>
+  Effect.gen(function* () {
+    const normalized = normalizeTalkNoteInput(input);
+    const talkFilePath = buildTalkNotePath(repoRoot, normalized.draftId);
+    const warnings = yield* validateTalkNoteRefs(repoRoot, normalized.refs);
+    const contents = renderTalkNoteContents(normalized);
+
+    return {
+      path: talkFilePath,
+      title: normalized.topic,
+      contents,
+      affectedFiles: [talkFilePath],
+      warnings,
+      commitSafety: "safe_direct",
+    } satisfies NilusTalkNotePreview;
+  });
 
 const listDomainEntries = (input: { repoRoot: string; domain: NilusDomain }) =>
   Effect.gen(function* () {
@@ -555,6 +606,90 @@ function readRecentCommits(repoRoot: string, relativePaths: readonly string[]): 
   }
 }
 
+interface NormalizedTalkNoteInput {
+  readonly draftId: string;
+  readonly topic: string;
+  readonly body: string;
+  readonly project: string | null;
+  readonly thread: string | null;
+  readonly refs: readonly string[];
+}
+
+function normalizeTalkNoteInput(input: NilusTalkNoteDraftInput): NormalizedTalkNoteInput {
+  return {
+    draftId: input.draftId.trim(),
+    topic: input.topic.trim(),
+    body: input.body.trim(),
+    project: input.project?.trim() || null,
+    thread: input.thread?.trim() || null,
+    refs:
+      input.refs
+        ?.map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+        .toSorted() ?? [],
+  };
+}
+
+const validateTalkNoteRefs = (repoRoot: string, refs: readonly string[]) =>
+  Effect.gen(function* () {
+    const warnings: string[] = [];
+
+    for (const refPath of refs) {
+      const absolutePath = yield* resolveRepoRelativePath(repoRoot, refPath);
+      if (!NFS.existsSync(absolutePath)) {
+        warnings.push(`Reference not found: ${refPath}`);
+        continue;
+      }
+
+      const domain = classifyDomain(refPath);
+      if (domain === null) {
+        warnings.push(`Reference is outside the current Nilus browser domains: ${refPath}`);
+      }
+    }
+
+    return warnings;
+  });
+
+function renderTalkNoteContents(input: NormalizedTalkNoteInput) {
+  const lines = [
+    "---",
+    "type: note",
+    "author: nilus",
+    `date: ${formatLocalDate(new Date())}`,
+    `topic: ${input.topic}`,
+  ];
+
+  if (input.project) {
+    lines.push(`project: ${input.project}`);
+  }
+  if (input.thread) {
+    lines.push(`thread: ${input.thread}`);
+  }
+  if (input.refs.length > 0) {
+    lines.push("refs:");
+    for (const refPath of input.refs) {
+      lines.push(`  - ${refPath}`);
+    }
+  }
+
+  lines.push("---", "", input.body);
+  return `${lines.join("\n")}\n`;
+}
+
+function buildTalkNotePath(repoRoot: string, draftId: string) {
+  const timestamp = formatTalkLogTimestamp(parseDraftDate(draftId));
+  const directory = path.join(repoRoot, "talk-log");
+  let candidate = `${timestamp}-nilus.md`;
+  let index = 1;
+
+  while (NFS.existsSync(path.join(directory, candidate))) {
+    candidate = `${timestamp}-nilus-${index}.md`;
+    index += 1;
+  }
+
+  return path.posix.join("talk-log", candidate);
+}
+
 const readWritableLines = (filePath: string) =>
   readTextFile(filePath).pipe(
     Effect.map((contents) => {
@@ -570,6 +705,21 @@ const writeLines = (filePath: string, lines: readonly string[]) =>
   Effect.try({
     try: () => {
       NFS.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+    },
+    catch: (cause) =>
+      new NilusReadError({
+        message: `Failed to write ${path.basename(filePath)}.`,
+        cause,
+      }),
+  });
+
+const writeTextFile = (filePath: string, contents: string) =>
+  Effect.try({
+    try: () => {
+      NFS.mkdirSync(path.dirname(filePath), {
+        recursive: true,
+      });
+      NFS.writeFileSync(filePath, contents, "utf8");
     },
     catch: (cause) =>
       new NilusReadError({
@@ -598,6 +748,21 @@ function formatLocalDate(value: Date) {
   const month = `${value.getMonth() + 1}`.padStart(2, "0");
   const day = `${value.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatTalkLogTimestamp(value: Date) {
+  const year = value.getUTCFullYear();
+  const month = `${value.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getUTCDate()}`.padStart(2, "0");
+  const hour = `${value.getUTCHours()}`.padStart(2, "0");
+  const minute = `${value.getUTCMinutes()}`.padStart(2, "0");
+  const second = `${value.getUTCSeconds()}`.padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}${minute}${second}Z`;
+}
+
+function parseDraftDate(draftId: string) {
+  const parsed = new Date(draftId);
+  return Number.isNaN(parsed.valueOf()) ? new Date() : parsed;
 }
 
 function buildRecurringNextTaskLine(priority: string, payload: string): string | null {

@@ -67,6 +67,8 @@ export interface WsRpcClient {
     readonly readDocument: RpcUnaryMethod<typeof WS_METHODS.nilusReadDocument>;
     readonly prepareTaskCompletion: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTaskCompletion>;
     readonly completeTask: RpcUnaryMethod<typeof WS_METHODS.nilusCompleteTask>;
+    readonly prepareTalkNote: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTalkNote>;
+    readonly createTalkNote: RpcUnaryMethod<typeof WS_METHODS.nilusCreateTalkNote>;
   };
   readonly shell: {
     readonly openInEditor: (input: {
@@ -174,6 +176,10 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.request((client) => client[WS_METHODS.nilusPrepareTaskCompletion](input)),
       completeTask: (input) =>
         transport.request((client) => client[WS_METHODS.nilusCompleteTask](input)),
+      prepareTalkNote: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPrepareTalkNote](input)),
+      createTalkNote: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusCreateTalkNote](input)),
     },
     shell: {
       openInEditor: (input) =>
