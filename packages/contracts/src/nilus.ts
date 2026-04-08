@@ -92,6 +92,63 @@ export const NilusDocument = Schema.Struct({
 });
 export type NilusDocument = typeof NilusDocument.Type;
 
+export const NilusTaskContextInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  taskNumber: PositiveInt,
+});
+export type NilusTaskContextInput = typeof NilusTaskContextInput.Type;
+
+export const NilusTaskContextDocument = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  domain: NilusDomain,
+});
+export type NilusTaskContextDocument = typeof NilusTaskContextDocument.Type;
+
+export const NilusTaskContextCommit = Schema.Struct({
+  hash: TrimmedNonEmptyString,
+  subject: TrimmedNonEmptyString,
+});
+export type NilusTaskContextCommit = typeof NilusTaskContextCommit.Type;
+
+export const NilusTaskContext = Schema.Struct({
+  task: NilusTaskRecord,
+  continuityThread: Schema.NullOr(TrimmedNonEmptyString),
+  projects: Schema.Array(TrimmedNonEmptyString),
+  relatedOpenTasks: Schema.Array(NilusTaskRecord),
+  recentDoneTasks: Schema.Array(NilusTaskRecord),
+  relatedDocuments: Schema.Array(NilusTaskContextDocument),
+  recentCommits: Schema.Array(NilusTaskContextCommit),
+});
+export type NilusTaskContext = typeof NilusTaskContext.Type;
+
+export const NilusPrepareTaskCompletionInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  taskNumber: PositiveInt,
+});
+export type NilusPrepareTaskCompletionInput = typeof NilusPrepareTaskCompletionInput.Type;
+
+export const NilusTaskCompletionPreview = Schema.Struct({
+  task: NilusTaskRecord,
+  completedLine: TrimmedNonEmptyString,
+  nextTaskLine: Schema.NullOr(TrimmedNonEmptyString),
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+});
+export type NilusTaskCompletionPreview = typeof NilusTaskCompletionPreview.Type;
+
+export const NilusCompleteTaskInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  taskNumber: PositiveInt,
+});
+export type NilusCompleteTaskInput = typeof NilusCompleteTaskInput.Type;
+
+export const NilusCompleteTaskResult = Schema.Struct({
+  completedLine: TrimmedNonEmptyString,
+  nextTaskLine: Schema.NullOr(TrimmedNonEmptyString),
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+});
+export type NilusCompleteTaskResult = typeof NilusCompleteTaskResult.Type;
+
 export class NilusReadError extends Schema.TaggedErrorClass<NilusReadError>()("NilusReadError", {
   message: TrimmedNonEmptyString,
   cause: Schema.optional(Schema.Defect),

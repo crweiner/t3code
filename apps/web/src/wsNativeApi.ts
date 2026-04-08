@@ -56,8 +56,11 @@ export function createWsNativeApi(): NativeApi {
     nilus: {
       getStartupSnapshot: rpcClient.nilus.getStartupSnapshot,
       listTasks: rpcClient.nilus.listTasks,
+      getTaskContext: rpcClient.nilus.getTaskContext,
       listDomainEntries: rpcClient.nilus.listDomainEntries,
       readDocument: rpcClient.nilus.readDocument,
+      prepareTaskCompletion: rpcClient.nilus.prepareTaskCompletion,
+      completeTask: rpcClient.nilus.completeTask,
     },
     shell: {
       openInEditor: (cwd, editor) => rpcClient.shell.openInEditor({ cwd, editor }),

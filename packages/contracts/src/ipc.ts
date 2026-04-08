@@ -26,9 +26,15 @@ import type {
 } from "./project";
 import type {
   NilusDocument,
+  NilusCompleteTaskInput,
+  NilusCompleteTaskResult,
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
+  NilusPrepareTaskCompletionInput,
+  NilusTaskCompletionPreview,
+  NilusTaskContext,
+  NilusTaskContextInput,
   NilusReadDocumentInput,
   NilusStartupSnapshot,
   NilusStartupSnapshotInput,
@@ -154,8 +160,13 @@ export interface NativeApi {
   nilus: {
     getStartupSnapshot: (input: NilusStartupSnapshotInput) => Promise<NilusStartupSnapshot>;
     listTasks: (input: NilusListTasksInput) => Promise<ReadonlyArray<NilusTaskRecord>>;
+    getTaskContext: (input: NilusTaskContextInput) => Promise<NilusTaskContext>;
     listDomainEntries: (input: NilusListDomainEntriesInput) => Promise<NilusListDomainEntriesResult>;
     readDocument: (input: NilusReadDocumentInput) => Promise<NilusDocument>;
+    prepareTaskCompletion: (
+      input: NilusPrepareTaskCompletionInput,
+    ) => Promise<NilusTaskCompletionPreview>;
+    completeTask: (input: NilusCompleteTaskInput) => Promise<NilusCompleteTaskResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;

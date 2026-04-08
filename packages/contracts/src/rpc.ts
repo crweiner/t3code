@@ -53,14 +53,20 @@ import {
   ProjectWriteFileResult,
 } from "./project";
 import {
+  NilusCompleteTaskInput,
+  NilusCompleteTaskResult,
   NilusDocument,
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
+  NilusPrepareTaskCompletionInput,
   NilusReadDocumentInput,
   NilusReadError,
   NilusStartupSnapshot,
   NilusStartupSnapshotInput,
+  NilusTaskCompletionPreview,
+  NilusTaskContext,
+  NilusTaskContextInput,
   NilusTaskRecord,
 } from "./nilus";
 import {
@@ -93,8 +99,11 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   nilusGetStartupSnapshot: "nilus.getStartupSnapshot",
   nilusListTasks: "nilus.listTasks",
+  nilusGetTaskContext: "nilus.getTaskContext",
   nilusListDomainEntries: "nilus.listDomainEntries",
   nilusReadDocument: "nilus.readDocument",
+  nilusPrepareTaskCompletion: "nilus.prepareTaskCompletion",
+  nilusCompleteTask: "nilus.completeTask",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -188,6 +197,12 @@ export const WsNilusListTasksRpc = Rpc.make(WS_METHODS.nilusListTasks, {
   error: NilusReadError,
 });
 
+export const WsNilusGetTaskContextRpc = Rpc.make(WS_METHODS.nilusGetTaskContext, {
+  payload: NilusTaskContextInput,
+  success: NilusTaskContext,
+  error: NilusReadError,
+});
+
 export const WsNilusListDomainEntriesRpc = Rpc.make(WS_METHODS.nilusListDomainEntries, {
   payload: NilusListDomainEntriesInput,
   success: NilusListDomainEntriesResult,
@@ -197,6 +212,18 @@ export const WsNilusListDomainEntriesRpc = Rpc.make(WS_METHODS.nilusListDomainEn
 export const WsNilusReadDocumentRpc = Rpc.make(WS_METHODS.nilusReadDocument, {
   payload: NilusReadDocumentInput,
   success: NilusDocument,
+  error: NilusReadError,
+});
+
+export const WsNilusPrepareTaskCompletionRpc = Rpc.make(WS_METHODS.nilusPrepareTaskCompletion, {
+  payload: NilusPrepareTaskCompletionInput,
+  success: NilusTaskCompletionPreview,
+  error: NilusReadError,
+});
+
+export const WsNilusCompleteTaskRpc = Rpc.make(WS_METHODS.nilusCompleteTask, {
+  payload: NilusCompleteTaskInput,
+  success: NilusCompleteTaskResult,
   error: NilusReadError,
 });
 
@@ -383,8 +410,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsNilusGetStartupSnapshotRpc,
   WsNilusListTasksRpc,
+  WsNilusGetTaskContextRpc,
   WsNilusListDomainEntriesRpc,
   WsNilusReadDocumentRpc,
+  WsNilusPrepareTaskCompletionRpc,
+  WsNilusCompleteTaskRpc,
   WsShellOpenInEditorRpc,
   WsSubscribeGitStatusRpc,
   WsGitPullRpc,
