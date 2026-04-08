@@ -6,22 +6,24 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Schema from "effect/Schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { NilusDomain, NilusTaskRecord } from "@t3tools/contracts";
+import type { NilusCommitSafety, NilusDomain, NilusTaskRecord } from "@t3tools/contracts";
 
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Button } from "../components/ui/button";
 import { toastManager } from "../components/ui/toast";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import {
+  nilusCreateTalkNoteMutationOptions,
   nilusCompleteTaskMutationOptions,
   nilusDocumentQueryOptions,
   nilusDomainEntriesQueryOptions,
   nilusStartupSnapshotQueryOptions,
   nilusTaskCompletionPreviewQueryOptions,
   nilusTaskContextQueryOptions,
+  nilusTalkNotePreviewQueryOptions,
   nilusTasksQueryOptions,
 } from "../lib/nilusReactQuery";
 import { readLocalApi } from "../localApi";
@@ -44,6 +46,18 @@ function NilusRouteView() {
   const [view, setView] = useState<NilusView>("overview");
   const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
+  const [talkDraftId, setTalkDraftId] = useState(() => new Date().toISOString());
+  const [talkTopic, setTalkTopic] = useState("");
+  const [talkBody, setTalkBody] = useState("");
+  const [talkProject, setTalkProject] = useState("NilusBrowser");
+  const [talkThread, setTalkThread] = useState("nilus-browser");
+  const [talkRefsInput, setTalkRefsInput] = useState("");
+
+  const deferredTalkTopic = useDeferredValue(talkTopic);
+  const deferredTalkBody = useDeferredValue(talkBody);
+  const deferredTalkProject = useDeferredValue(talkProject);
+  const deferredTalkThread = useDeferredValue(talkThread);
+  const deferredTalkRefsInput = useDeferredValue(talkRefsInput);
 
   const startupQuery = useQuery(
     nilusStartupSnapshotQueryOptions({
@@ -91,6 +105,57 @@ function NilusRouteView() {
   );
   const completeTaskMutation = useMutation(
     nilusCompleteTaskMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
+  const talkNoteDraft = useMemo(() => {
+    if (!repoRoot) {
+      return null;
+    }
+
+    const topic = deferredTalkTopic.trim();
+    const body = deferredTalkBody.trim();
+    if (topic.length === 0 || body.length === 0) {
+      return null;
+    }
+
+    const refs = parseRefsInput(deferredTalkRefsInput);
+
+    return {
+      repoRoot,
+      draftId: talkDraftId,
+      draftKey: JSON.stringify([
+        talkDraftId,
+        topic,
+        body,
+        deferredTalkProject.trim(),
+        deferredTalkThread.trim(),
+        refs,
+      ]),
+      topic,
+      body,
+      ...(deferredTalkProject.trim().length > 0 ? { project: deferredTalkProject.trim() } : {}),
+      ...(deferredTalkThread.trim().length > 0 ? { thread: deferredTalkThread.trim() } : {}),
+      ...(refs.length > 0 ? { refs } : {}),
+    };
+  }, [
+    deferredTalkBody,
+    deferredTalkProject,
+    deferredTalkRefsInput,
+    deferredTalkThread,
+    deferredTalkTopic,
+    repoRoot,
+    talkDraftId,
+  ]);
+  const talkNotePreviewQuery = useQuery(
+    nilusTalkNotePreviewQueryOptions({
+      draft: talkNoteDraft,
+      enabled: repoRoot !== null && talkNoteDraft !== null,
+    }),
+  );
+  const createTalkNoteMutation = useMutation(
+    nilusCreateTalkNoteMutationOptions({
       repoRoot,
       queryClient,
     }),
@@ -160,6 +225,7 @@ function NilusRouteView() {
     void tasksQuery.refetch();
     void taskContextQuery.refetch();
     void taskCompletionPreviewQuery.refetch();
+    void talkNotePreviewQuery.refetch();
     void domainEntriesQuery.refetch();
     void documentQuery.refetch();
   };
@@ -208,6 +274,47 @@ function NilusRouteView() {
         type: "error",
         title: "Failed to complete task",
         description: error instanceof Error ? error.message : "Unknown Nilus task error.",
+      });
+    }
+  };
+
+  const handleCreateTalkNote = async () => {
+    if (!repoRoot || !talkNoteDraft) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Create talk-log note "${talkNoteDraft.topic}"?`,
+          "This writes a new markdown note into talk-log/ in the selected Nilus repo.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const { draftKey: _draftKey, ...payload } = talkNoteDraft;
+      const result = await createTalkNoteMutation.mutateAsync(payload);
+      toastManager.add({
+        type: "success",
+        title: "Created talk-log note",
+        description: result.path,
+      });
+      setView("talk");
+      setSelectedDocumentPath(result.path);
+      setTalkDraftId(new Date().toISOString());
+      setTalkTopic("");
+      setTalkBody("");
+      setTalkRefsInput("");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to create talk-log note",
+        description: error instanceof Error ? error.message : "Unknown Nilus talk note error.",
       });
     }
   };
@@ -360,45 +467,71 @@ function NilusRouteView() {
                     />
                   </section>
 
-                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                    <div className="flex items-center gap-2">
-                      <BookOpenIcon className="size-4 text-muted-foreground" />
-                      <div>
-                        <h2 className="text-sm font-semibold">Memory domains</h2>
-                        <p className="text-xs text-muted-foreground">
-                          Jump into read-only Nilus repo areas
-                        </p>
+                  <div className="space-y-4">
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <BookOpenIcon className="size-4 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Memory domains</h2>
+                          <p className="text-xs text-muted-foreground">
+                            Jump into read-only Nilus repo areas
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      {MEMORY_VIEWS.map((memoryView) => {
-                        const count =
-                          memoryView === "talk"
-                            ? startupQuery.data?.domainCounts.talk
-                            : memoryView === "partners"
-                              ? startupQuery.data?.domainCounts.partners
-                              : memoryView === "issues"
-                                ? startupQuery.data?.domainCounts.issues
-                                : startupQuery.data?.domainCounts.knowledge;
-                        return (
-                          <button
-                            key={memoryView}
-                            type="button"
-                            className="rounded-2xl border border-border bg-background/70 p-4 text-left transition-colors hover:bg-accent/40"
-                            onClick={() => setView(memoryView)}
-                          >
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                              {memoryView}
-                            </p>
-                            <p className="mt-2 text-lg font-semibold capitalize">{memoryView}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {typeof count === "number" ? `${count} documents` : "Loading..."}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {MEMORY_VIEWS.map((memoryView) => {
+                          const count =
+                            memoryView === "talk"
+                              ? startupQuery.data?.domainCounts.talk
+                              : memoryView === "partners"
+                                ? startupQuery.data?.domainCounts.partners
+                                : memoryView === "issues"
+                                  ? startupQuery.data?.domainCounts.issues
+                                  : startupQuery.data?.domainCounts.knowledge;
+                          return (
+                            <button
+                              key={memoryView}
+                              type="button"
+                              className="rounded-2xl border border-border bg-background/70 p-4 text-left transition-colors hover:bg-accent/40"
+                              onClick={() => setView(memoryView)}
+                            >
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                {memoryView}
+                              </p>
+                              <p className="mt-2 text-lg font-semibold capitalize">{memoryView}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {typeof count === "number" ? `${count} documents` : "Loading..."}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    <TalkNoteComposer
+                      topic={talkTopic}
+                      body={talkBody}
+                      project={talkProject}
+                      thread={talkThread}
+                      refsInput={talkRefsInput}
+                      preview={talkNotePreviewQuery.data ?? null}
+                      previewError={
+                        talkNotePreviewQuery.error instanceof Error
+                          ? talkNotePreviewQuery.error.message
+                          : null
+                      }
+                      isLoadingPreview={
+                        talkNotePreviewQuery.isPending || talkNotePreviewQuery.isFetching
+                      }
+                      isCreating={createTalkNoteMutation.isPending}
+                      onTopicChange={setTalkTopic}
+                      onBodyChange={setTalkBody}
+                      onProjectChange={setTalkProject}
+                      onThreadChange={setTalkThread}
+                      onRefsChange={setTalkRefsInput}
+                      onCreate={() => void handleCreateTalkNote()}
+                    />
+                  </div>
                 </div>
               ) : null}
 
@@ -803,9 +936,169 @@ function TaskWorkflowPanel(props: {
   );
 }
 
+function TalkNoteComposer(props: {
+  topic: string;
+  body: string;
+  project: string;
+  thread: string;
+  refsInput: string;
+  preview: {
+    path: string;
+    contents: string;
+    affectedFiles: readonly string[];
+    warnings: readonly string[];
+    commitSafety: NilusCommitSafety;
+  } | null;
+  previewError: string | null;
+  isLoadingPreview: boolean;
+  isCreating: boolean;
+  onTopicChange: (value: string) => void;
+  onBodyChange: (value: string) => void;
+  onProjectChange: (value: string) => void;
+  onThreadChange: (value: string) => void;
+  onRefsChange: (value: string) => void;
+  onCreate: () => void;
+}) {
+  const hasDraft = props.topic.trim().length > 0 || props.body.trim().length > 0;
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Talk-log draft</h2>
+          <p className="text-xs text-muted-foreground">
+            Prototype a durable Nilus note with preview before writing to the repo.
+          </p>
+        </div>
+        {props.preview ? (
+          <SafetyPill safety={props.preview.commitSafety} />
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Topic
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="What changed or was learned?"
+            value={props.topic}
+            onChange={(event) => props.onTopicChange(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Project
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="NilusBrowser"
+            value={props.project}
+            onChange={(event) => props.onProjectChange(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Thread
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="nilus-browser"
+            value={props.thread}
+            onChange={(event) => props.onThreadChange(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Refs
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="docs/example.md, talk-log/example.md"
+            value={props.refsInput}
+            onChange={(event) => props.onRefsChange(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <label className="mt-3 block">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Body
+        </span>
+        <textarea
+          className="mt-2 min-h-36 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+          placeholder="Short durable note here."
+          value={props.body}
+          onChange={(event) => props.onBodyChange(event.target.value)}
+        />
+      </label>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {hasDraft
+            ? "Preview updates as you type. Create writes a new file in talk-log/."
+            : "Enter a topic and body to prepare a talk-log preview."}
+        </p>
+        <Button
+          size="sm"
+          onClick={props.onCreate}
+          disabled={props.isCreating || props.preview === null}
+        >
+          {props.isCreating ? "Creating..." : "Create talk note"}
+        </Button>
+      </div>
+
+      {props.previewError ? (
+        <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+          {props.previewError}
+        </div>
+      ) : props.isLoadingPreview && props.preview === null ? (
+        <div className="mt-4 text-sm text-muted-foreground">Preparing talk-note preview...</div>
+      ) : props.preview ? (
+        <div className="mt-4 space-y-3">
+          <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Target file
+            </p>
+            <p className="mt-2 font-mono text-[12px]">{props.preview.path}</p>
+          </div>
+          <PreviewBlock label="talk-log note contents" contents={props.preview.contents} />
+          <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
+            <p>Affected files: {props.preview.affectedFiles.join(", ")}</p>
+            <p className="mt-1">Sync mode: {formatCommitSafety(props.preview.commitSafety)}</p>
+          </div>
+          {props.preview.warnings.length > 0 ? (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/8 px-3 py-3 text-sm text-amber-200">
+              {props.preview.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function MetadataPill(props: { label: string }) {
   return (
     <span className="rounded-full border border-border bg-card/70 px-2 py-1">{props.label}</span>
+  );
+}
+
+function SafetyPill(props: { safety: NilusCommitSafety }) {
+  const className =
+    props.safety === "safe_direct"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+      : props.safety === "review_preferred"
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+        : "border-destructive/40 bg-destructive/10 text-destructive";
+
+  return (
+    <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${className}`}>
+      {formatCommitSafety(props.safety)}
+    </span>
   );
 }
 
@@ -852,6 +1145,26 @@ function PreviewBlock(props: { label: string; contents: string; muted?: boolean 
       </pre>
     </div>
   );
+}
+
+function parseRefsInput(value: string) {
+  return value
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter((entry, index, all) => entry.length > 0 && all.indexOf(entry) === index);
+}
+
+function formatCommitSafety(safety: NilusCommitSafety) {
+  switch (safety) {
+    case "safe_direct":
+      return "Safe direct";
+    case "review_preferred":
+      return "Review preferred";
+    case "blocked":
+      return "Blocked";
+    default:
+      return safety;
+  }
 }
 
 export const Route = createFileRoute("/nilus")({

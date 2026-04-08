@@ -149,6 +149,43 @@ export const NilusCompleteTaskResult = Schema.Struct({
 });
 export type NilusCompleteTaskResult = typeof NilusCompleteTaskResult.Type;
 
+export const NilusCommitSafety = Schema.Literals(["safe_direct", "review_preferred", "blocked"]);
+export type NilusCommitSafety = typeof NilusCommitSafety.Type;
+
+export const NilusTalkNoteDraftInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  draftId: TrimmedNonEmptyString,
+  topic: TrimmedNonEmptyString,
+  body: TrimmedNonEmptyString,
+  project: Schema.optional(TrimmedNonEmptyString),
+  thread: Schema.optional(TrimmedNonEmptyString),
+  refs: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type NilusTalkNoteDraftInput = typeof NilusTalkNoteDraftInput.Type;
+
+export const NilusTalkNotePreview = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  contents: Schema.String,
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+  warnings: Schema.Array(TrimmedNonEmptyString),
+  commitSafety: NilusCommitSafety,
+});
+export type NilusTalkNotePreview = typeof NilusTalkNotePreview.Type;
+
+export const NilusCreateTalkNoteInput = NilusTalkNoteDraftInput;
+export type NilusCreateTalkNoteInput = typeof NilusCreateTalkNoteInput.Type;
+
+export const NilusCreateTalkNoteResult = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  contents: Schema.String,
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+  warnings: Schema.Array(TrimmedNonEmptyString),
+  commitSafety: NilusCommitSafety,
+});
+export type NilusCreateTalkNoteResult = typeof NilusCreateTalkNoteResult.Type;
+
 export class NilusReadError extends Schema.TaggedErrorClass<NilusReadError>()("NilusReadError", {
   message: TrimmedNonEmptyString,
   cause: Schema.optional(Schema.Defect),
