@@ -248,6 +248,12 @@ export interface EnvironmentApi {
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;
   };
+  nilus: {
+    getStartupSnapshot: (input: NilusStartupSnapshotInput) => Promise<NilusStartupSnapshot>;
+    listTasks: (input: NilusListTasksInput) => Promise<ReadonlyArray<NilusTaskRecord>>;
+    listDomainEntries: (input: NilusListDomainEntriesInput) => Promise<NilusListDomainEntriesResult>;
+    readDocument: (input: NilusReadDocumentInput) => Promise<NilusDocument>;
+  };
   git: {
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;
     createWorktree: (input: GitCreateWorktreeInput) => Promise<GitCreateWorktreeResult>;

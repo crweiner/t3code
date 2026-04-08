@@ -2401,8 +2401,15 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
 
 const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
+  const pathname = useLocation({ select: (loc) => loc.pathname });
+  const isOnNilus = pathname.startsWith("/nilus");
+  const isOnSettings = pathname.startsWith("/settings");
+  const footerButtonClass = "gap-2 px-2 py-1.5";
   const handleSettingsClick = useCallback(() => {
     void navigate({ to: "/settings" });
+  }, [navigate]);
+  const handleNilusClick = useCallback(() => {
+    void navigate({ to: "/nilus" });
   }, [navigate]);
 
   return (
@@ -2412,7 +2419,25 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            className={`${footerButtonClass} ${
+              isOnNilus
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            }`}
+            onClick={handleNilusClick}
+          >
+            <BookOpenIcon className="size-3.5" />
+            <span className="text-xs">Nilus</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className={`${footerButtonClass} ${
+              isOnSettings
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            }`}
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />

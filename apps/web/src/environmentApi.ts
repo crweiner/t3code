@@ -23,6 +23,12 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
     filesystem: {
       browse: rpcClient.filesystem.browse,
     },
+    nilus: {
+      getStartupSnapshot: rpcClient.nilus.getStartupSnapshot,
+      listTasks: rpcClient.nilus.listTasks,
+      listDomainEntries: rpcClient.nilus.listDomainEntries,
+      readDocument: rpcClient.nilus.readDocument,
+    },
     git: {
       pull: rpcClient.git.pull,
       refreshStatus: rpcClient.git.refreshStatus,

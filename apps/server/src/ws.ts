@@ -4,6 +4,7 @@ import {
   AuthSessionId,
   CommandId,
   EventId,
+  NilusReadError,
   type OrchestrationCommand,
   type GitActionProgressEvent,
   type GitManagerServiceError,
@@ -52,6 +53,12 @@ import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
+import {
+  getNilusStartupSnapshot,
+  listNilusDomainEntries,
+  listNilusTasks,
+  readNilusDocument,
+} from "./nilus/readOnly.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import {
@@ -801,6 +808,33 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               }),
             ),
             { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.nilusGetStartupSnapshot]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusGetStartupSnapshot, getNilusStartupSnapshot(input), {
+            "rpc.aggregate": "nilus",
+          }),
+        [WS_METHODS.nilusListTasks]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusListTasks, listNilusTasks(input), {
+            "rpc.aggregate": "nilus",
+          }),
+        [WS_METHODS.nilusListDomainEntries]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusListDomainEntries, listNilusDomainEntries(input), {
+            "rpc.aggregate": "nilus",
+          }),
+        [WS_METHODS.nilusReadDocument]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.nilusReadDocument,
+            readNilusDocument(input).pipe(
+              Effect.mapError((cause) =>
+                Schema.is(NilusReadError)(cause)
+                  ? cause
+                  : new NilusReadError({
+                      message: "Failed to read Nilus document.",
+                      cause,
+                    }),
+              ),
+            ),
+            { "rpc.aggregate": "nilus" },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, open.openInEditor(input), {
