@@ -1213,9 +1213,6 @@ function TalkNoteComposer(props: {
             Prototype a durable Nilus note with preview before writing to the repo.
           </p>
         </div>
-        {props.preview ? (
-          <SafetyPill safety={props.preview.commitSafety} />
-        ) : null}
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1309,7 +1306,6 @@ function TalkNoteComposer(props: {
           <PreviewBlock label="talk-log note contents" contents={props.preview.contents} />
           <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
             <p>Affected files: {props.preview.affectedFiles.join(", ")}</p>
-            <p className="mt-1">Sync mode: {formatCommitSafety(props.preview.commitSafety)}</p>
           </div>
           {props.preview.warnings.length > 0 ? (
             <div className="rounded-xl border border-amber-500/40 bg-amber-500/8 px-3 py-3 text-sm text-amber-200">
@@ -1327,21 +1323,6 @@ function TalkNoteComposer(props: {
 function MetadataPill(props: { label: string }) {
   return (
     <span className="rounded-full border border-border bg-card/70 px-2 py-1">{props.label}</span>
-  );
-}
-
-function SafetyPill(props: { safety: NilusCommitSafety }) {
-  const className =
-    props.safety === "safe_direct"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-      : props.safety === "review_preferred"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
-        : "border-destructive/40 bg-destructive/10 text-destructive";
-
-  return (
-    <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${className}`}>
-      {formatCommitSafety(props.safety)}
-    </span>
   );
 }
 
@@ -1695,19 +1676,6 @@ function parseRefsInput(value: string) {
     .split(/[\n,]/)
     .map((entry) => entry.trim())
     .filter((entry, index, all) => entry.length > 0 && all.indexOf(entry) === index);
-}
-
-function formatCommitSafety(safety: NilusCommitSafety) {
-  switch (safety) {
-    case "safe_direct":
-      return "Safe direct";
-    case "review_preferred":
-      return "Review preferred";
-    case "blocked":
-      return "Blocked";
-    default:
-      return safety;
-  }
 }
 
 export const Route = createFileRoute("/nilus")({
