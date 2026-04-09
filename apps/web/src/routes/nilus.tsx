@@ -13,8 +13,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PROVIDER_DISPLAY_NAMES,
   type GitStatusResult,
+  type NilusIssueSection,
   type NilusCommitSafety,
   type NilusDomain,
+  type NilusPartnerSection,
   type NilusTaskRecord,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -26,17 +28,25 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { gitRunStackedActionMutationOptions } from "../lib/gitReactQuery";
 import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
+  nilusCreateIssueMutationOptions,
+  nilusCreatePartnerMutationOptions,
   nilusCreateTalkNoteMutationOptions,
   nilusCreateTaskMutationOptions,
   nilusCompleteTaskMutationOptions,
   nilusDocumentQueryOptions,
   nilusDomainEntriesQueryOptions,
+  nilusIssueDraftPreviewQueryOptions,
+  nilusIssueUpdatePreviewQueryOptions,
+  nilusPartnerDraftPreviewQueryOptions,
+  nilusPartnerUpdatePreviewQueryOptions,
   nilusStartupSnapshotQueryOptions,
   nilusTaskDraftPreviewQueryOptions,
   nilusTaskCompletionPreviewQueryOptions,
   nilusTaskContextQueryOptions,
   nilusTalkNotePreviewQueryOptions,
   nilusTasksQueryOptions,
+  nilusUpdateIssueMutationOptions,
+  nilusUpdatePartnerMutationOptions,
 } from "../lib/nilusReactQuery";
 import { readLocalApi } from "../localApi";
 import { randomUUID } from "../lib/utils";
@@ -76,6 +86,22 @@ function NilusRouteView() {
   const [talkProject, setTalkProject] = useState("NilusBrowser");
   const [talkThread, setTalkThread] = useState("nilus-browser");
   const [talkRefsInput, setTalkRefsInput] = useState("");
+  const [partnerName, setPartnerName] = useState("");
+  const [partnerSlug, setPartnerSlug] = useState("");
+  const [partnerPrimarySite, setPartnerPrimarySite] = useState("");
+  const [partnerOwner, setPartnerOwner] = useState("");
+  const [partnerStatus, setPartnerStatus] = useState("");
+  const [partnerLastReviewed, setPartnerLastReviewed] = useState("");
+  const [partnerHistoryNote, setPartnerHistoryNote] = useState("");
+  const [partnerUpdateSection, setPartnerUpdateSection] = useState<NilusPartnerSection>("History");
+  const [partnerUpdateEntry, setPartnerUpdateEntry] = useState("");
+  const [issueTitle, setIssueTitle] = useState("");
+  const [issueSlug, setIssueSlug] = useState("");
+  const [issueSymptoms, setIssueSymptoms] = useState("");
+  const [issueRootCause, setIssueRootCause] = useState("");
+  const [issueResolution, setIssueResolution] = useState("");
+  const [issueUpdateSection, setIssueUpdateSection] = useState<NilusIssueSection>("Resolution");
+  const [issueUpdateEntry, setIssueUpdateEntry] = useState("");
 
   const deferredTalkTopic = useDeferredValue(talkTopic);
   const deferredTalkBody = useDeferredValue(talkBody);
@@ -90,6 +116,20 @@ function NilusRouteView() {
   const deferredTaskRecur = useDeferredValue(taskRecur);
   const deferredTaskAfter = useDeferredValue(taskAfter);
   const deferredTaskWaiting = useDeferredValue(taskWaiting);
+  const deferredPartnerName = useDeferredValue(partnerName);
+  const deferredPartnerSlug = useDeferredValue(partnerSlug);
+  const deferredPartnerPrimarySite = useDeferredValue(partnerPrimarySite);
+  const deferredPartnerOwner = useDeferredValue(partnerOwner);
+  const deferredPartnerStatus = useDeferredValue(partnerStatus);
+  const deferredPartnerLastReviewed = useDeferredValue(partnerLastReviewed);
+  const deferredPartnerHistoryNote = useDeferredValue(partnerHistoryNote);
+  const deferredPartnerUpdateEntry = useDeferredValue(partnerUpdateEntry);
+  const deferredIssueTitle = useDeferredValue(issueTitle);
+  const deferredIssueSlug = useDeferredValue(issueSlug);
+  const deferredIssueSymptoms = useDeferredValue(issueSymptoms);
+  const deferredIssueRootCause = useDeferredValue(issueRootCause);
+  const deferredIssueResolution = useDeferredValue(issueResolution);
+  const deferredIssueUpdateEntry = useDeferredValue(issueUpdateEntry);
   const gitStatus = useGitStatus(repoRoot);
 
   const startupQuery = useQuery(
@@ -249,6 +289,168 @@ function NilusRouteView() {
       queryClient,
     }),
   );
+  const partnerDraft = useMemo(() => {
+    if (!repoRoot || deferredPartnerName.trim().length === 0) {
+      return null;
+    }
+
+    return {
+      repoRoot,
+      draftKey: JSON.stringify([
+        deferredPartnerName.trim(),
+        deferredPartnerSlug.trim(),
+        deferredPartnerPrimarySite.trim(),
+        deferredPartnerOwner.trim(),
+        deferredPartnerStatus.trim(),
+        deferredPartnerLastReviewed.trim(),
+        deferredPartnerHistoryNote.trim(),
+      ]),
+      name: deferredPartnerName.trim(),
+      ...(deferredPartnerSlug.trim().length > 0 ? { slug: deferredPartnerSlug.trim() } : {}),
+      ...(deferredPartnerPrimarySite.trim().length > 0
+        ? { primarySite: deferredPartnerPrimarySite.trim() }
+        : {}),
+      ...(deferredPartnerOwner.trim().length > 0 ? { owner: deferredPartnerOwner.trim() } : {}),
+      ...(deferredPartnerStatus.trim().length > 0 ? { status: deferredPartnerStatus.trim() } : {}),
+      ...(deferredPartnerLastReviewed.trim().length > 0
+        ? { lastReviewed: deferredPartnerLastReviewed.trim() }
+        : {}),
+      ...(deferredPartnerHistoryNote.trim().length > 0
+        ? { historyNote: deferredPartnerHistoryNote.trim() }
+        : {}),
+    };
+  }, [
+    deferredPartnerHistoryNote,
+    deferredPartnerLastReviewed,
+    deferredPartnerName,
+    deferredPartnerOwner,
+    deferredPartnerPrimarySite,
+    deferredPartnerSlug,
+    deferredPartnerStatus,
+    repoRoot,
+  ]);
+  const partnerDraftPreviewQuery = useQuery(
+    nilusPartnerDraftPreviewQueryOptions({
+      draft: partnerDraft,
+      enabled: repoRoot !== null && activeDomain === "partners",
+    }),
+  );
+  const createPartnerMutation = useMutation(
+    nilusCreatePartnerMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
+  const partnerUpdateDraft = useMemo(() => {
+    if (!repoRoot || activeDomain !== "partners" || !selectedDocumentPath) {
+      return null;
+    }
+    if (deferredPartnerUpdateEntry.trim().length === 0) {
+      return null;
+    }
+
+    return {
+      repoRoot,
+      path: selectedDocumentPath,
+      section: partnerUpdateSection,
+      entry: deferredPartnerUpdateEntry.trim(),
+      draftKey: JSON.stringify([
+        selectedDocumentPath,
+        partnerUpdateSection,
+        deferredPartnerUpdateEntry.trim(),
+      ]),
+    };
+  }, [
+    activeDomain,
+    deferredPartnerUpdateEntry,
+    partnerUpdateSection,
+    repoRoot,
+    selectedDocumentPath,
+  ]);
+  const partnerUpdatePreviewQuery = useQuery(
+    nilusPartnerUpdatePreviewQueryOptions({
+      draft: partnerUpdateDraft,
+      enabled: repoRoot !== null && activeDomain === "partners",
+    }),
+  );
+  const updatePartnerMutation = useMutation(
+    nilusUpdatePartnerMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
+  const issueDraft = useMemo(() => {
+    if (!repoRoot || deferredIssueTitle.trim().length === 0) {
+      return null;
+    }
+
+    return {
+      repoRoot,
+      draftKey: JSON.stringify([
+        deferredIssueTitle.trim(),
+        deferredIssueSlug.trim(),
+        deferredIssueSymptoms.trim(),
+        deferredIssueRootCause.trim(),
+        deferredIssueResolution.trim(),
+      ]),
+      title: deferredIssueTitle.trim(),
+      ...(deferredIssueSlug.trim().length > 0 ? { slug: deferredIssueSlug.trim() } : {}),
+      ...(deferredIssueSymptoms.trim().length > 0 ? { symptoms: deferredIssueSymptoms.trim() } : {}),
+      ...(deferredIssueRootCause.trim().length > 0
+        ? { rootCause: deferredIssueRootCause.trim() }
+        : {}),
+      ...(deferredIssueResolution.trim().length > 0
+        ? { resolution: deferredIssueResolution.trim() }
+        : {}),
+    };
+  }, [
+    deferredIssueResolution,
+    deferredIssueRootCause,
+    deferredIssueSlug,
+    deferredIssueSymptoms,
+    deferredIssueTitle,
+    repoRoot,
+  ]);
+  const issueDraftPreviewQuery = useQuery(
+    nilusIssueDraftPreviewQueryOptions({
+      draft: issueDraft,
+      enabled: repoRoot !== null && activeDomain === "issues",
+    }),
+  );
+  const createIssueMutation = useMutation(
+    nilusCreateIssueMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
+  const issueUpdateDraft = useMemo(() => {
+    if (!repoRoot || activeDomain !== "issues" || !selectedDocumentPath) {
+      return null;
+    }
+    if (deferredIssueUpdateEntry.trim().length === 0) {
+      return null;
+    }
+
+    return {
+      repoRoot,
+      path: selectedDocumentPath,
+      section: issueUpdateSection,
+      entry: deferredIssueUpdateEntry.trim(),
+      draftKey: JSON.stringify([selectedDocumentPath, issueUpdateSection, deferredIssueUpdateEntry.trim()]),
+    };
+  }, [activeDomain, deferredIssueUpdateEntry, issueUpdateSection, repoRoot, selectedDocumentPath]);
+  const issueUpdatePreviewQuery = useQuery(
+    nilusIssueUpdatePreviewQueryOptions({
+      draft: issueUpdateDraft,
+      enabled: repoRoot !== null && activeDomain === "issues",
+    }),
+  );
+  const updateIssueMutation = useMutation(
+    nilusUpdateIssueMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
   const saveRepoMutation = useMutation(
     gitRunStackedActionMutationOptions({
       cwd: repoRoot,
@@ -329,6 +531,10 @@ function NilusRouteView() {
     void taskContextQuery.refetch();
     void taskCompletionPreviewQuery.refetch();
     void talkNotePreviewQuery.refetch();
+    void partnerDraftPreviewQuery.refetch();
+    void partnerUpdatePreviewQuery.refetch();
+    void issueDraftPreviewQuery.refetch();
+    void issueUpdatePreviewQuery.refetch();
     void domainEntriesQuery.refetch();
     void documentQuery.refetch();
     void refreshGitStatus(repoRoot);
@@ -468,6 +674,170 @@ function NilusRouteView() {
         type: "error",
         title: "Failed to create task",
         description: error instanceof Error ? error.message : "Unknown Nilus task error.",
+      });
+    }
+  };
+
+  const handleCreatePartner = async () => {
+    if (!repoRoot || !partnerDraft) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Create partner file "${partnerDraft.name}"?`,
+          "This writes a new markdown file into partners/ in the selected Nilus repo.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const { draftKey: _draftKey, ...payload } = partnerDraft;
+      const result = await createPartnerMutation.mutateAsync(payload);
+      await refreshGitStatus(repoRoot);
+      toastManager.add({
+        type: "success",
+        title: "Created partner file",
+        description: result.path,
+      });
+      setView("partners");
+      setSelectedDocumentPath(result.path);
+      setPartnerName("");
+      setPartnerSlug("");
+      setPartnerPrimarySite("");
+      setPartnerOwner("");
+      setPartnerStatus("");
+      setPartnerLastReviewed("");
+      setPartnerHistoryNote("");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to create partner file",
+        description: error instanceof Error ? error.message : "Unknown Nilus partner error.",
+      });
+    }
+  };
+
+  const handleUpdatePartner = async () => {
+    if (!repoRoot || !partnerUpdateDraft) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Update ${partnerUpdateDraft.path}?`,
+          `This appends a guarded entry to the ${partnerUpdateDraft.section} section.`,
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const { draftKey: _draftKey, ...payload } = partnerUpdateDraft;
+      const result = await updatePartnerMutation.mutateAsync(payload);
+      await refreshGitStatus(repoRoot);
+      toastManager.add({
+        type: "success",
+        title: "Updated partner file",
+        description: result.path,
+      });
+      setSelectedDocumentPath(result.path);
+      setPartnerUpdateEntry("");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to update partner file",
+        description: error instanceof Error ? error.message : "Unknown Nilus partner error.",
+      });
+    }
+  };
+
+  const handleCreateIssue = async () => {
+    if (!repoRoot || !issueDraft) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Create issue file "${issueDraft.title}"?`,
+          "This writes a new markdown file into issues/ in the selected Nilus repo.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const { draftKey: _draftKey, ...payload } = issueDraft;
+      const result = await createIssueMutation.mutateAsync(payload);
+      await refreshGitStatus(repoRoot);
+      toastManager.add({
+        type: "success",
+        title: "Created issue file",
+        description: result.path,
+      });
+      setView("issues");
+      setSelectedDocumentPath(result.path);
+      setIssueTitle("");
+      setIssueSlug("");
+      setIssueSymptoms("");
+      setIssueRootCause("");
+      setIssueResolution("");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to create issue file",
+        description: error instanceof Error ? error.message : "Unknown Nilus issue error.",
+      });
+    }
+  };
+
+  const handleUpdateIssue = async () => {
+    if (!repoRoot || !issueUpdateDraft) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Update ${issueUpdateDraft.path}?`,
+          `This appends a guarded entry to the ${issueUpdateDraft.section} section.`,
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const { draftKey: _draftKey, ...payload } = issueUpdateDraft;
+      const result = await updateIssueMutation.mutateAsync(payload);
+      await refreshGitStatus(repoRoot);
+      toastManager.add({
+        type: "success",
+        title: "Updated issue file",
+        description: result.path,
+      });
+      setSelectedDocumentPath(result.path);
+      setIssueUpdateEntry("");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to update issue file",
+        description: error instanceof Error ? error.message : "Unknown Nilus issue error.",
       });
     }
   };
@@ -889,6 +1259,95 @@ function NilusRouteView() {
                         onThreadChange={setTalkThread}
                         onRefsChange={setTalkRefsInput}
                         onCreate={() => void handleCreateTalkNote()}
+                      />
+                    ) : null}
+
+                    {activeDomain === "partners" ? (
+                      <PartnerComposer
+                        name={partnerName}
+                        slug={partnerSlug}
+                        primarySite={partnerPrimarySite}
+                        owner={partnerOwner}
+                        status={partnerStatus}
+                        lastReviewed={partnerLastReviewed}
+                        historyNote={partnerHistoryNote}
+                        createPreview={partnerDraftPreviewQuery.data ?? null}
+                        createPreviewError={
+                          partnerDraftPreviewQuery.error instanceof Error
+                            ? partnerDraftPreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingCreatePreview={
+                          partnerDraftPreviewQuery.isPending || partnerDraftPreviewQuery.isFetching
+                        }
+                        isCreating={createPartnerMutation.isPending}
+                        updatePath={selectedDocumentPath}
+                        updateSection={partnerUpdateSection}
+                        updateEntry={partnerUpdateEntry}
+                        updatePreview={partnerUpdatePreviewQuery.data ?? null}
+                        updatePreviewError={
+                          partnerUpdatePreviewQuery.error instanceof Error
+                            ? partnerUpdatePreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingUpdatePreview={
+                          partnerUpdatePreviewQuery.isPending ||
+                          partnerUpdatePreviewQuery.isFetching
+                        }
+                        isUpdating={updatePartnerMutation.isPending}
+                        onNameChange={setPartnerName}
+                        onSlugChange={setPartnerSlug}
+                        onPrimarySiteChange={setPartnerPrimarySite}
+                        onOwnerChange={setPartnerOwner}
+                        onStatusChange={setPartnerStatus}
+                        onLastReviewedChange={setPartnerLastReviewed}
+                        onHistoryNoteChange={setPartnerHistoryNote}
+                        onCreate={() => void handleCreatePartner()}
+                        onUpdateSectionChange={setPartnerUpdateSection}
+                        onUpdateEntryChange={setPartnerUpdateEntry}
+                        onUpdate={() => void handleUpdatePartner()}
+                      />
+                    ) : null}
+
+                    {activeDomain === "issues" ? (
+                      <IssueComposer
+                        title={issueTitle}
+                        slug={issueSlug}
+                        symptoms={issueSymptoms}
+                        rootCause={issueRootCause}
+                        resolution={issueResolution}
+                        createPreview={issueDraftPreviewQuery.data ?? null}
+                        createPreviewError={
+                          issueDraftPreviewQuery.error instanceof Error
+                            ? issueDraftPreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingCreatePreview={
+                          issueDraftPreviewQuery.isPending || issueDraftPreviewQuery.isFetching
+                        }
+                        isCreating={createIssueMutation.isPending}
+                        updatePath={selectedDocumentPath}
+                        updateSection={issueUpdateSection}
+                        updateEntry={issueUpdateEntry}
+                        updatePreview={issueUpdatePreviewQuery.data ?? null}
+                        updatePreviewError={
+                          issueUpdatePreviewQuery.error instanceof Error
+                            ? issueUpdatePreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingUpdatePreview={
+                          issueUpdatePreviewQuery.isPending || issueUpdatePreviewQuery.isFetching
+                        }
+                        isUpdating={updateIssueMutation.isPending}
+                        onTitleChange={setIssueTitle}
+                        onSlugChange={setIssueSlug}
+                        onSymptomsChange={setIssueSymptoms}
+                        onRootCauseChange={setIssueRootCause}
+                        onResolutionChange={setIssueResolution}
+                        onCreate={() => void handleCreateIssue()}
+                        onUpdateSectionChange={setIssueUpdateSection}
+                        onUpdateEntryChange={setIssueUpdateEntry}
+                        onUpdate={() => void handleUpdateIssue()}
                       />
                     ) : null}
 
@@ -1649,6 +2108,483 @@ function TalkNoteComposer(props: {
           ) : null}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+const PARTNER_UPDATE_SECTIONS: readonly NilusPartnerSection[] = [
+  "History",
+  "Known Issues",
+  "TODO",
+  "Related",
+];
+
+function PartnerComposer(props: {
+  name: string;
+  slug: string;
+  primarySite: string;
+  owner: string;
+  status: string;
+  lastReviewed: string;
+  historyNote: string;
+  createPreview: {
+    path: string;
+    contents: string;
+    affectedFiles: readonly string[];
+  } | null;
+  createPreviewError: string | null;
+  isLoadingCreatePreview: boolean;
+  isCreating: boolean;
+  updatePath: string | null;
+  updateSection: NilusPartnerSection;
+  updateEntry: string;
+  updatePreview: {
+    path: string;
+    contents: string;
+    affectedFiles: readonly string[];
+  } | null;
+  updatePreviewError: string | null;
+  isLoadingUpdatePreview: boolean;
+  isUpdating: boolean;
+  onNameChange: (value: string) => void;
+  onSlugChange: (value: string) => void;
+  onPrimarySiteChange: (value: string) => void;
+  onOwnerChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+  onLastReviewedChange: (value: string) => void;
+  onHistoryNoteChange: (value: string) => void;
+  onCreate: () => void;
+  onUpdateSectionChange: (value: NilusPartnerSection) => void;
+  onUpdateEntryChange: (value: string) => void;
+  onUpdate: () => void;
+}) {
+  const hasCreateDraft = props.name.trim().length > 0;
+  const hasUpdateDraft = props.updateEntry.trim().length > 0;
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+      <div>
+        <h2 className="text-sm font-semibold">Partner drafts</h2>
+        <p className="text-xs text-muted-foreground">
+          Create a new partner file or append a guarded note to the selected partner record.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-6 xl:grid-cols-2">
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Create partner</h3>
+            <p className="text-xs text-muted-foreground">
+              Generates a fresh <span className="font-mono">partners/*.md</span> file using Nilus structure.
+            </p>
+          </div>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Name
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="Partner Name"
+              value={props.name}
+              onChange={(event) => props.onNameChange(event.target.value)}
+            />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Slug
+              </span>
+              <input
+                className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                placeholder="partner-name"
+                value={props.slug}
+                onChange={(event) => props.onSlugChange(event.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Primary site
+              </span>
+              <input
+                className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                placeholder="example.com"
+                value={props.primarySite}
+                onChange={(event) => props.onPrimarySiteChange(event.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Owner
+              </span>
+              <input
+                className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                placeholder="Chandler Weiner"
+                value={props.owner}
+                onChange={(event) => props.onOwnerChange(event.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Status
+              </span>
+              <input
+                className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                placeholder="Green relationship"
+                value={props.status}
+                onChange={(event) => props.onStatusChange(event.target.value)}
+              />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Last reviewed
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="2026-04-09"
+              value={props.lastReviewed}
+              onChange={(event) => props.onLastReviewedChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Initial history note
+            </span>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+              placeholder="First durable history note for this partner."
+              value={props.historyNote}
+              onChange={(event) => props.onHistoryNoteChange(event.target.value)}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {hasCreateDraft
+                ? "Preview updates as you type. Create writes a new partner file."
+                : "Enter a partner name to prepare a preview."}
+            </p>
+            <Button
+              size="sm"
+              onClick={props.onCreate}
+              disabled={props.isCreating || props.createPreview === null}
+            >
+              {props.isCreating ? "Creating..." : "Create partner"}
+            </Button>
+          </div>
+          {props.createPreviewError ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+              {props.createPreviewError}
+            </div>
+          ) : props.isLoadingCreatePreview && props.createPreview === null ? (
+            <div className="text-sm text-muted-foreground">Preparing partner preview...</div>
+          ) : props.createPreview ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Target file
+                </p>
+                <p className="mt-2 font-mono text-[12px]">{props.createPreview.path}</p>
+              </div>
+              <PreviewBlock label="partner file contents" contents={props.createPreview.contents} />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Update selected partner</h3>
+            <p className="text-xs text-muted-foreground">
+              Appends a guarded markdown entry into one section of the currently selected partner file.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
+            Target:{" "}
+            <span className="font-mono text-foreground">
+              {props.updatePath ?? "Select a partner file first"}
+            </span>
+          </div>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Section
+            </span>
+            <select
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              value={props.updateSection}
+              onChange={(event) => props.onUpdateSectionChange(event.target.value as NilusPartnerSection)}
+            >
+              {PARTNER_UPDATE_SECTIONS.map((section) => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Markdown entry
+            </span>
+            <textarea
+              className="mt-2 min-h-36 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+              placeholder="New durable partner note."
+              value={props.updateEntry}
+              onChange={(event) => props.onUpdateEntryChange(event.target.value)}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {hasUpdateDraft
+                ? "Preview shows the full updated document before write."
+                : "Type an entry to prepare an update preview."}
+            </p>
+            <Button
+              size="sm"
+              onClick={props.onUpdate}
+              disabled={props.isUpdating || props.updatePreview === null}
+            >
+              {props.isUpdating ? "Updating..." : "Update partner"}
+            </Button>
+          </div>
+          {props.updatePreviewError ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+              {props.updatePreviewError}
+            </div>
+          ) : props.isLoadingUpdatePreview && props.updatePreview === null ? (
+            <div className="text-sm text-muted-foreground">Preparing partner update preview...</div>
+          ) : props.updatePreview ? (
+            <div className="space-y-3">
+              <PreviewBlock label="updated partner file" contents={props.updatePreview.contents} />
+              <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
+                <p>Affected files: {props.updatePreview.affectedFiles.join(", ")}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const ISSUE_UPDATE_SECTIONS: readonly NilusIssueSection[] = [
+  "Symptoms",
+  "Root Cause",
+  "Resolution",
+  "Affected Partners",
+  "Related",
+];
+
+function IssueComposer(props: {
+  title: string;
+  slug: string;
+  symptoms: string;
+  rootCause: string;
+  resolution: string;
+  createPreview: {
+    path: string;
+    contents: string;
+    affectedFiles: readonly string[];
+  } | null;
+  createPreviewError: string | null;
+  isLoadingCreatePreview: boolean;
+  isCreating: boolean;
+  updatePath: string | null;
+  updateSection: NilusIssueSection;
+  updateEntry: string;
+  updatePreview: {
+    path: string;
+    contents: string;
+    affectedFiles: readonly string[];
+  } | null;
+  updatePreviewError: string | null;
+  isLoadingUpdatePreview: boolean;
+  isUpdating: boolean;
+  onTitleChange: (value: string) => void;
+  onSlugChange: (value: string) => void;
+  onSymptomsChange: (value: string) => void;
+  onRootCauseChange: (value: string) => void;
+  onResolutionChange: (value: string) => void;
+  onCreate: () => void;
+  onUpdateSectionChange: (value: NilusIssueSection) => void;
+  onUpdateEntryChange: (value: string) => void;
+  onUpdate: () => void;
+}) {
+  const hasCreateDraft = props.title.trim().length > 0;
+  const hasUpdateDraft = props.updateEntry.trim().length > 0;
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+      <div>
+        <h2 className="text-sm font-semibold">Issue drafts</h2>
+        <p className="text-xs text-muted-foreground">
+          Create a new issue pattern or append a guarded note to the selected issue file.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-6 xl:grid-cols-2">
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Create issue</h3>
+            <p className="text-xs text-muted-foreground">
+              Generates a fresh <span className="font-mono">issues/*.md</span> file using Nilus structure.
+            </p>
+          </div>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Title
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="Issue Title"
+              value={props.title}
+              onChange={(event) => props.onTitleChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Slug
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="issue-title"
+              value={props.slug}
+              onChange={(event) => props.onSlugChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Symptoms
+            </span>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+              placeholder="What the partner or team sees."
+              value={props.symptoms}
+              onChange={(event) => props.onSymptomsChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Root cause
+            </span>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+              placeholder="What appears to be happening."
+              value={props.rootCause}
+              onChange={(event) => props.onRootCauseChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Resolution
+            </span>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+              placeholder="How it was fixed or mitigated."
+              value={props.resolution}
+              onChange={(event) => props.onResolutionChange(event.target.value)}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {hasCreateDraft
+                ? "Preview updates as you type. Create writes a new issue file."
+                : "Enter an issue title to prepare a preview."}
+            </p>
+            <Button
+              size="sm"
+              onClick={props.onCreate}
+              disabled={props.isCreating || props.createPreview === null}
+            >
+              {props.isCreating ? "Creating..." : "Create issue"}
+            </Button>
+          </div>
+          {props.createPreviewError ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+              {props.createPreviewError}
+            </div>
+          ) : props.isLoadingCreatePreview && props.createPreview === null ? (
+            <div className="text-sm text-muted-foreground">Preparing issue preview...</div>
+          ) : props.createPreview ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Target file
+                </p>
+                <p className="mt-2 font-mono text-[12px]">{props.createPreview.path}</p>
+              </div>
+              <PreviewBlock label="issue file contents" contents={props.createPreview.contents} />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Update selected issue</h3>
+            <p className="text-xs text-muted-foreground">
+              Appends a guarded markdown entry into one section of the currently selected issue file.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
+            Target:{" "}
+            <span className="font-mono text-foreground">
+              {props.updatePath ?? "Select an issue file first"}
+            </span>
+          </div>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Section
+            </span>
+            <select
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              value={props.updateSection}
+              onChange={(event) => props.onUpdateSectionChange(event.target.value as NilusIssueSection)}
+            >
+              {ISSUE_UPDATE_SECTIONS.map((section) => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Markdown entry
+            </span>
+            <textarea
+              className="mt-2 min-h-36 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+              placeholder="New durable issue note."
+              value={props.updateEntry}
+              onChange={(event) => props.onUpdateEntryChange(event.target.value)}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {hasUpdateDraft
+                ? "Preview shows the full updated document before write."
+                : "Type an entry to prepare an update preview."}
+            </p>
+            <Button
+              size="sm"
+              onClick={props.onUpdate}
+              disabled={props.isUpdating || props.updatePreview === null}
+            >
+              {props.isUpdating ? "Updating..." : "Update issue"}
+            </Button>
+          </div>
+          {props.updatePreviewError ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+              {props.updatePreviewError}
+            </div>
+          ) : props.isLoadingUpdatePreview && props.updatePreview === null ? (
+            <div className="text-sm text-muted-foreground">Preparing issue update preview...</div>
+          ) : props.updatePreview ? (
+            <div className="space-y-3">
+              <PreviewBlock label="updated issue file" contents={props.updatePreview.contents} />
+              <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
+                <p>Affected files: {props.updatePreview.affectedFiles.join(", ")}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }

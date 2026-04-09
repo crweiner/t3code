@@ -1,5 +1,10 @@
 import type {
   NilusCompleteTaskResult,
+  NilusIssueDraftInput,
+  NilusIssueUpdateInput,
+  NilusMemoryMutationResult,
+  NilusPartnerDraftInput,
+  NilusPartnerUpdateInput,
   NilusCreateTaskResult,
   NilusCreateTalkNoteResult,
   NilusDomain,
@@ -41,6 +46,14 @@ export const nilusQueryKeys = {
     ["nilus", "taskDraftPreview", repoRoot, draftKey] as const,
   talkNotePreview: (repoRoot: string | null, draftKey: string) =>
     ["nilus", "talkNotePreview", repoRoot, draftKey] as const,
+  partnerDraftPreview: (repoRoot: string | null, draftKey: string) =>
+    ["nilus", "partnerDraftPreview", repoRoot, draftKey] as const,
+  partnerUpdatePreview: (repoRoot: string | null, draftKey: string) =>
+    ["nilus", "partnerUpdatePreview", repoRoot, draftKey] as const,
+  issueDraftPreview: (repoRoot: string | null, draftKey: string) =>
+    ["nilus", "issueDraftPreview", repoRoot, draftKey] as const,
+  issueUpdatePreview: (repoRoot: string | null, draftKey: string) =>
+    ["nilus", "issueUpdatePreview", repoRoot, draftKey] as const,
 };
 
 export const nilusMutationKeys = {
@@ -49,6 +62,10 @@ export const nilusMutationKeys = {
   createTask: (repoRoot: string | null) => ["nilus", "mutation", "createTask", repoRoot] as const,
   createTalkNote: (repoRoot: string | null) =>
     ["nilus", "mutation", "createTalkNote", repoRoot] as const,
+  createPartner: (repoRoot: string | null) => ["nilus", "mutation", "createPartner", repoRoot] as const,
+  updatePartner: (repoRoot: string | null) => ["nilus", "mutation", "updatePartner", repoRoot] as const,
+  createIssue: (repoRoot: string | null) => ["nilus", "mutation", "createIssue", repoRoot] as const,
+  updateIssue: (repoRoot: string | null) => ["nilus", "mutation", "updateIssue", repoRoot] as const,
 };
 
 export function invalidateNilusQueries(queryClient: QueryClient, repoRoot: string | null) {
@@ -64,6 +81,10 @@ export function invalidateNilusQueries(queryClient: QueryClient, repoRoot: strin
     queryClient.invalidateQueries({ queryKey: ["nilus", "completionPreview", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "taskDraftPreview", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "talkNotePreview", repoRoot] }),
+    queryClient.invalidateQueries({ queryKey: ["nilus", "partnerDraftPreview", repoRoot] }),
+    queryClient.invalidateQueries({ queryKey: ["nilus", "partnerUpdatePreview", repoRoot] }),
+    queryClient.invalidateQueries({ queryKey: ["nilus", "issueDraftPreview", repoRoot] }),
+    queryClient.invalidateQueries({ queryKey: ["nilus", "issueUpdatePreview", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "domainEntries", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "document", repoRoot] }),
   ]);
@@ -250,6 +271,94 @@ export function nilusTaskDraftPreviewQueryOptions(input: {
   });
 }
 
+export function nilusPartnerDraftPreviewQueryOptions(input: {
+  draft: (NilusPartnerDraftInput & { draftKey: string }) | null;
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: nilusQueryKeys.partnerDraftPreview(
+      input.draft?.repoRoot ?? null,
+      input.draft?.draftKey ?? "empty",
+    ),
+    queryFn: async () => {
+      const api = readNilusApi();
+      if (!input.draft) {
+        throw new Error("Nilus partner draft preview is unavailable.");
+      }
+      const { draftKey: _draftKey, ...payload } = input.draft;
+      return api.preparePartnerDraft(payload);
+    },
+    enabled: (input.enabled ?? true) && input.draft !== null,
+    staleTime: STARTUP_STALE_TIME,
+  });
+}
+
+export function nilusPartnerUpdatePreviewQueryOptions(input: {
+  draft: (NilusPartnerUpdateInput & { draftKey: string }) | null;
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: nilusQueryKeys.partnerUpdatePreview(
+      input.draft?.repoRoot ?? null,
+      input.draft?.draftKey ?? "empty",
+    ),
+    queryFn: async () => {
+      const api = readNilusApi();
+      if (!input.draft) {
+        throw new Error("Nilus partner update preview is unavailable.");
+      }
+      const { draftKey: _draftKey, ...payload } = input.draft;
+      return api.preparePartnerUpdate(payload);
+    },
+    enabled: (input.enabled ?? true) && input.draft !== null,
+    staleTime: STARTUP_STALE_TIME,
+  });
+}
+
+export function nilusIssueDraftPreviewQueryOptions(input: {
+  draft: (NilusIssueDraftInput & { draftKey: string }) | null;
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: nilusQueryKeys.issueDraftPreview(
+      input.draft?.repoRoot ?? null,
+      input.draft?.draftKey ?? "empty",
+    ),
+    queryFn: async () => {
+      const api = readNilusApi();
+      if (!input.draft) {
+        throw new Error("Nilus issue draft preview is unavailable.");
+      }
+      const { draftKey: _draftKey, ...payload } = input.draft;
+      return api.prepareIssueDraft(payload);
+    },
+    enabled: (input.enabled ?? true) && input.draft !== null,
+    staleTime: STARTUP_STALE_TIME,
+  });
+}
+
+export function nilusIssueUpdatePreviewQueryOptions(input: {
+  draft: (NilusIssueUpdateInput & { draftKey: string }) | null;
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: nilusQueryKeys.issueUpdatePreview(
+      input.draft?.repoRoot ?? null,
+      input.draft?.draftKey ?? "empty",
+    ),
+    queryFn: async () => {
+      const api = readNilusApi();
+      if (!input.draft) {
+        throw new Error("Nilus issue update preview is unavailable.");
+      }
+      const { draftKey: _draftKey, ...payload } = input.draft;
+      return api.prepareIssueUpdate(payload);
+    },
+    enabled: (input.enabled ?? true) && input.draft !== null,
+    staleTime: STARTUP_STALE_TIME,
+  });
+}
+
 export function nilusCompleteTaskMutationOptions(input: {
   repoRoot: string | null;
   queryClient: QueryClient;
@@ -305,6 +414,82 @@ export function nilusCreateTaskMutationOptions(input: {
       return api.createTask(draft);
     },
     onSuccess: async (_result: NilusCreateTaskResult) => {
+      await invalidateNilusQueries(input.queryClient, input.repoRoot);
+    },
+  });
+}
+
+export function nilusCreatePartnerMutationOptions(input: {
+  repoRoot: string | null;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationKey: nilusMutationKeys.createPartner(input.repoRoot),
+    mutationFn: async (draft: NilusPartnerDraftInput) => {
+      const api = readNilusApi();
+      if (!input.repoRoot) {
+        throw new Error("Nilus partner creation is unavailable.");
+      }
+      return api.createPartner(draft);
+    },
+    onSuccess: async (_result: NilusMemoryMutationResult) => {
+      await invalidateNilusQueries(input.queryClient, input.repoRoot);
+    },
+  });
+}
+
+export function nilusUpdatePartnerMutationOptions(input: {
+  repoRoot: string | null;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationKey: nilusMutationKeys.updatePartner(input.repoRoot),
+    mutationFn: async (draft: NilusPartnerUpdateInput) => {
+      const api = readNilusApi();
+      if (!input.repoRoot) {
+        throw new Error("Nilus partner update is unavailable.");
+      }
+      return api.updatePartner(draft);
+    },
+    onSuccess: async (_result: NilusMemoryMutationResult) => {
+      await invalidateNilusQueries(input.queryClient, input.repoRoot);
+    },
+  });
+}
+
+export function nilusCreateIssueMutationOptions(input: {
+  repoRoot: string | null;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationKey: nilusMutationKeys.createIssue(input.repoRoot),
+    mutationFn: async (draft: NilusIssueDraftInput) => {
+      const api = readNilusApi();
+      if (!input.repoRoot) {
+        throw new Error("Nilus issue creation is unavailable.");
+      }
+      return api.createIssue(draft);
+    },
+    onSuccess: async (_result: NilusMemoryMutationResult) => {
+      await invalidateNilusQueries(input.queryClient, input.repoRoot);
+    },
+  });
+}
+
+export function nilusUpdateIssueMutationOptions(input: {
+  repoRoot: string | null;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationKey: nilusMutationKeys.updateIssue(input.repoRoot),
+    mutationFn: async (draft: NilusIssueUpdateInput) => {
+      const api = readNilusApi();
+      if (!input.repoRoot) {
+        throw new Error("Nilus issue update is unavailable.");
+      }
+      return api.updateIssue(draft);
+    },
+    onSuccess: async (_result: NilusMemoryMutationResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
     },
   });

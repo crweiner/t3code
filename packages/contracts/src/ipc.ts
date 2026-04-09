@@ -33,9 +33,15 @@ import type {
   NilusCreateTalkNoteInput,
   NilusCreateTalkNoteResult,
   NilusDocument,
+  NilusIssueDraftInput,
+  NilusIssueUpdateInput,
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
+  NilusMemoryMutationResult,
+  NilusMemoryPreview,
+  NilusPartnerDraftInput,
+  NilusPartnerUpdateInput,
   NilusTaskDraftInput,
   NilusTaskDraftPreview,
   NilusPrepareTaskCompletionInput,
@@ -286,8 +292,14 @@ export interface EnvironmentApi {
     createTask: (input: NilusCreateTaskInput) => Promise<NilusCreateTaskResult>;
     prepareTalkNote: (input: NilusTalkNoteDraftInput) => Promise<NilusTalkNotePreview>;
     createTalkNote: (input: NilusCreateTalkNoteInput) => Promise<NilusCreateTalkNoteResult>;
-    prepareTaskDraft: (input: NilusTaskDraftInput) => Promise<NilusTaskDraftPreview>;
-    createTask: (input: NilusCreateTaskInput) => Promise<NilusCreateTaskResult>;
+    preparePartnerDraft: (input: NilusPartnerDraftInput) => Promise<NilusMemoryPreview>;
+    createPartner: (input: NilusPartnerDraftInput) => Promise<NilusMemoryMutationResult>;
+    preparePartnerUpdate: (input: NilusPartnerUpdateInput) => Promise<NilusMemoryPreview>;
+    updatePartner: (input: NilusPartnerUpdateInput) => Promise<NilusMemoryMutationResult>;
+    prepareIssueDraft: (input: NilusIssueDraftInput) => Promise<NilusMemoryPreview>;
+    createIssue: (input: NilusIssueDraftInput) => Promise<NilusMemoryMutationResult>;
+    prepareIssueUpdate: (input: NilusIssueUpdateInput) => Promise<NilusMemoryPreview>;
+    updateIssue: (input: NilusIssueUpdateInput) => Promise<NilusMemoryMutationResult>;
   };
   git: {
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;

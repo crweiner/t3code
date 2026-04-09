@@ -83,6 +83,14 @@ export interface WsRpcClient {
     readonly createTask: RpcUnaryMethod<typeof WS_METHODS.nilusCreateTask>;
     readonly prepareTalkNote: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTalkNote>;
     readonly createTalkNote: RpcUnaryMethod<typeof WS_METHODS.nilusCreateTalkNote>;
+    readonly preparePartnerDraft: RpcUnaryMethod<typeof WS_METHODS.nilusPreparePartnerDraft>;
+    readonly createPartner: RpcUnaryMethod<typeof WS_METHODS.nilusCreatePartner>;
+    readonly preparePartnerUpdate: RpcUnaryMethod<typeof WS_METHODS.nilusPreparePartnerUpdate>;
+    readonly updatePartner: RpcUnaryMethod<typeof WS_METHODS.nilusUpdatePartner>;
+    readonly prepareIssueDraft: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareIssueDraft>;
+    readonly createIssue: RpcUnaryMethod<typeof WS_METHODS.nilusCreateIssue>;
+    readonly prepareIssueUpdate: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareIssueUpdate>;
+    readonly updateIssue: RpcUnaryMethod<typeof WS_METHODS.nilusUpdateIssue>;
   };
   readonly shell: {
     readonly openInEditor: (input: {
@@ -186,6 +194,22 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.nilusPrepareTalkNote](input)),
       createTalkNote: (input) =>
         transport.request((client) => client[WS_METHODS.nilusCreateTalkNote](input)),
+      preparePartnerDraft: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPreparePartnerDraft](input)),
+      createPartner: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusCreatePartner](input)),
+      preparePartnerUpdate: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPreparePartnerUpdate](input)),
+      updatePartner: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusUpdatePartner](input)),
+      prepareIssueDraft: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPrepareIssueDraft](input)),
+      createIssue: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusCreateIssue](input)),
+      prepareIssueUpdate: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPrepareIssueUpdate](input)),
+      updateIssue: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusUpdateIssue](input)),
     },
     shell: {
       openInEditor: (input) =>
