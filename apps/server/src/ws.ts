@@ -49,12 +49,14 @@ import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
 import {
+  createNilusTask,
   createNilusTalkNote,
   getNilusStartupSnapshot,
   getNilusTaskContext,
   listNilusDomainEntries,
   listNilusTasks,
   completeNilusTask,
+  prepareNilusTaskDraft,
   prepareNilusTalkNote,
   prepareNilusTaskCompletion,
   readNilusDocument,
@@ -614,6 +616,14 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         ),
       [WS_METHODS.nilusCompleteTask]: (input) =>
         observeRpcEffect(WS_METHODS.nilusCompleteTask, completeNilusTask(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusPrepareTaskDraft]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusPrepareTaskDraft, prepareNilusTaskDraft(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusCreateTask]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusCreateTask, createNilusTask(input), {
           "rpc.aggregate": "nilus",
         }),
       [WS_METHODS.nilusPrepareTalkNote]: (input) =>

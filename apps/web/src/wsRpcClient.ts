@@ -67,6 +67,8 @@ export interface WsRpcClient {
     readonly readDocument: RpcUnaryMethod<typeof WS_METHODS.nilusReadDocument>;
     readonly prepareTaskCompletion: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTaskCompletion>;
     readonly completeTask: RpcUnaryMethod<typeof WS_METHODS.nilusCompleteTask>;
+    readonly prepareTaskDraft: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTaskDraft>;
+    readonly createTask: RpcUnaryMethod<typeof WS_METHODS.nilusCreateTask>;
     readonly prepareTalkNote: RpcUnaryMethod<typeof WS_METHODS.nilusPrepareTalkNote>;
     readonly createTalkNote: RpcUnaryMethod<typeof WS_METHODS.nilusCreateTalkNote>;
   };
@@ -176,6 +178,10 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.request((client) => client[WS_METHODS.nilusPrepareTaskCompletion](input)),
       completeTask: (input) =>
         transport.request((client) => client[WS_METHODS.nilusCompleteTask](input)),
+      prepareTaskDraft: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusPrepareTaskDraft](input)),
+      createTask: (input) =>
+        transport.request((client) => client[WS_METHODS.nilusCreateTask](input)),
       prepareTalkNote: (input) =>
         transport.request((client) => client[WS_METHODS.nilusPrepareTalkNote](input)),
       createTalkNote: (input) =>

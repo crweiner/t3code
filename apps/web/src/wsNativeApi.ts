@@ -61,6 +61,8 @@ export function createWsNativeApi(): NativeApi {
       readDocument: rpcClient.nilus.readDocument,
       prepareTaskCompletion: rpcClient.nilus.prepareTaskCompletion,
       completeTask: rpcClient.nilus.completeTask,
+      prepareTaskDraft: rpcClient.nilus.prepareTaskDraft,
+      createTask: rpcClient.nilus.createTask,
       prepareTalkNote: rpcClient.nilus.prepareTalkNote,
       createTalkNote: rpcClient.nilus.createTalkNote,
     },
