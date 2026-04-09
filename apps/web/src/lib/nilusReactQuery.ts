@@ -1,8 +1,10 @@
 import type {
   NilusCompleteTaskResult,
+  NilusCreateTaskResult,
   NilusCreateTalkNoteResult,
   NilusDomain,
   NilusListDomainEntriesResult,
+  NilusTaskDraftInput,
   NilusTaskRecord,
   NilusTalkNoteDraftInput,
 } from "@t3tools/contracts";
@@ -35,6 +37,8 @@ export const nilusQueryKeys = {
     ["nilus", "document", repoRoot, documentPath] as const,
   completionPreview: (repoRoot: string | null, taskNumber: number | null) =>
     ["nilus", "completionPreview", repoRoot, taskNumber] as const,
+  taskDraftPreview: (repoRoot: string | null, draftKey: string) =>
+    ["nilus", "taskDraftPreview", repoRoot, draftKey] as const,
   talkNotePreview: (repoRoot: string | null, draftKey: string) =>
     ["nilus", "talkNotePreview", repoRoot, draftKey] as const,
 };
@@ -42,6 +46,7 @@ export const nilusQueryKeys = {
 export const nilusMutationKeys = {
   completeTask: (repoRoot: string | null) =>
     ["nilus", "mutation", "completeTask", repoRoot] as const,
+  createTask: (repoRoot: string | null) => ["nilus", "mutation", "createTask", repoRoot] as const,
   createTalkNote: (repoRoot: string | null) =>
     ["nilus", "mutation", "createTalkNote", repoRoot] as const,
 };
@@ -57,6 +62,7 @@ export function invalidateNilusQueries(queryClient: QueryClient, repoRoot: strin
     queryClient.invalidateQueries({ queryKey: nilusQueryKeys.tasks(repoRoot, "done") }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "taskContext", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "completionPreview", repoRoot] }),
+    queryClient.invalidateQueries({ queryKey: ["nilus", "taskDraftPreview", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "talkNotePreview", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "domainEntries", repoRoot] }),
     queryClient.invalidateQueries({ queryKey: ["nilus", "document", repoRoot] }),
@@ -222,6 +228,28 @@ export function nilusTalkNotePreviewQueryOptions(input: {
   });
 }
 
+export function nilusTaskDraftPreviewQueryOptions(input: {
+  draft: (NilusTaskDraftInput & { draftKey: string }) | null;
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: nilusQueryKeys.taskDraftPreview(
+      input.draft?.repoRoot ?? null,
+      input.draft?.draftKey ?? "empty",
+    ),
+    queryFn: async () => {
+      const api = readNilusApi();
+      if (!input.draft) {
+        throw new Error("Nilus task preview is unavailable.");
+      }
+      const { draftKey: _draftKey, ...payload } = input.draft;
+      return api.prepareTaskDraft(payload);
+    },
+    enabled: (input.enabled ?? true) && input.draft !== null,
+    staleTime: STARTUP_STALE_TIME,
+  });
+}
+
 export function nilusCompleteTaskMutationOptions(input: {
   repoRoot: string | null;
   queryClient: QueryClient;
@@ -258,6 +286,25 @@ export function nilusCreateTalkNoteMutationOptions(input: {
       return api.createTalkNote(draft);
     },
     onSuccess: async (_result: NilusCreateTalkNoteResult) => {
+      await invalidateNilusQueries(input.queryClient, input.repoRoot);
+    },
+  });
+}
+
+export function nilusCreateTaskMutationOptions(input: {
+  repoRoot: string | null;
+  queryClient: QueryClient;
+}) {
+  return mutationOptions({
+    mutationKey: nilusMutationKeys.createTask(input.repoRoot),
+    mutationFn: async (draft: NilusTaskDraftInput) => {
+      const api = readNilusApi();
+      if (!input.repoRoot) {
+        throw new Error("Nilus task creation is unavailable.");
+      }
+      return api.createTask(draft);
+    },
+    onSuccess: async (_result: NilusCreateTaskResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
     },
   });

@@ -27,10 +27,12 @@ import { gitRunStackedActionMutationOptions } from "../lib/gitReactQuery";
 import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
   nilusCreateTalkNoteMutationOptions,
+  nilusCreateTaskMutationOptions,
   nilusCompleteTaskMutationOptions,
   nilusDocumentQueryOptions,
   nilusDomainEntriesQueryOptions,
   nilusStartupSnapshotQueryOptions,
+  nilusTaskDraftPreviewQueryOptions,
   nilusTaskCompletionPreviewQueryOptions,
   nilusTaskContextQueryOptions,
   nilusTalkNotePreviewQueryOptions,
@@ -59,6 +61,11 @@ function NilusRouteView() {
   const [view, setView] = useState<NilusView>("overview");
   const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
+  const [taskDescription, setTaskDescription] = useState("");
+  const [taskPriority, setTaskPriority] = useState("C");
+  const [taskProject, setTaskProject] = useState("NilusBrowser");
+  const [taskOwner, setTaskOwner] = useState("nilus");
+  const [taskThread, setTaskThread] = useState("nilus-browser");
   const [talkDraftId, setTalkDraftId] = useState(() => new Date().toISOString());
   const [talkTopic, setTalkTopic] = useState("");
   const [talkBody, setTalkBody] = useState("");
@@ -71,6 +78,11 @@ function NilusRouteView() {
   const deferredTalkProject = useDeferredValue(talkProject);
   const deferredTalkThread = useDeferredValue(talkThread);
   const deferredTalkRefsInput = useDeferredValue(talkRefsInput);
+  const deferredTaskDescription = useDeferredValue(taskDescription);
+  const deferredTaskPriority = useDeferredValue(taskPriority);
+  const deferredTaskProject = useDeferredValue(taskProject);
+  const deferredTaskOwner = useDeferredValue(taskOwner);
+  const deferredTaskThread = useDeferredValue(taskThread);
   const gitStatus = useGitStatus(repoRoot);
 
   const startupQuery = useQuery(
@@ -119,6 +131,53 @@ function NilusRouteView() {
   );
   const completeTaskMutation = useMutation(
     nilusCompleteTaskMutationOptions({
+      repoRoot,
+      queryClient,
+    }),
+  );
+  const taskDraft = useMemo(() => {
+    if (!repoRoot) {
+      return null;
+    }
+
+    const description = deferredTaskDescription.trim();
+    if (description.length === 0) {
+      return null;
+    }
+
+    return {
+      repoRoot,
+      draftKey: JSON.stringify([
+        description,
+        deferredTaskPriority.trim().toUpperCase(),
+        deferredTaskProject.trim(),
+        deferredTaskOwner.trim(),
+        deferredTaskThread.trim(),
+      ]),
+      description,
+      ...(deferredTaskPriority.trim().length > 0
+        ? { priority: deferredTaskPriority.trim().toUpperCase() }
+        : {}),
+      ...(deferredTaskProject.trim().length > 0 ? { project: deferredTaskProject.trim() } : {}),
+      ...(deferredTaskOwner.trim().length > 0 ? { owner: deferredTaskOwner.trim() } : {}),
+      ...(deferredTaskThread.trim().length > 0 ? { thread: deferredTaskThread.trim() } : {}),
+    };
+  }, [
+    deferredTaskDescription,
+    deferredTaskOwner,
+    deferredTaskPriority,
+    deferredTaskProject,
+    deferredTaskThread,
+    repoRoot,
+  ]);
+  const taskDraftPreviewQuery = useQuery(
+    nilusTaskDraftPreviewQueryOptions({
+      draft: taskDraft,
+      enabled: repoRoot !== null && taskDraft !== null && view === "tasks",
+    }),
+  );
+  const createTaskMutation = useMutation(
+    nilusCreateTaskMutationOptions({
       repoRoot,
       queryClient,
     }),
@@ -355,6 +414,48 @@ function NilusRouteView() {
         type: "error",
         title: "Failed to create talk-log note",
         description: error instanceof Error ? error.message : "Unknown Nilus talk note error.",
+      });
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!repoRoot || !taskDraft) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          `Create Nilus task "${taskDraft.description}"?`,
+          "This appends a new open task to todo.txt in the selected Nilus repo.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const { draftKey: _draftKey, ...payload } = taskDraft;
+      const result = await createTaskMutation.mutateAsync(payload);
+      await refreshGitStatus(repoRoot);
+      toastManager.add({
+        type: "success",
+        title: `Created task #${result.taskNumber}`,
+        description: result.line,
+      });
+      setSelectedTaskNumber(result.taskNumber);
+      setTaskDescription("");
+      setTaskPriority("C");
+      setTaskProject("NilusBrowser");
+      setTaskOwner("nilus");
+      setTaskThread("nilus-browser");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to create task",
+        description: error instanceof Error ? error.message : "Unknown Nilus task error.",
       });
     }
   };
@@ -613,29 +714,6 @@ function NilusRouteView() {
                       </div>
                     </section>
 
-                    <TalkNoteComposer
-                      topic={talkTopic}
-                      body={talkBody}
-                      project={talkProject}
-                      thread={talkThread}
-                      refsInput={talkRefsInput}
-                      preview={talkNotePreviewQuery.data ?? null}
-                      previewError={
-                        talkNotePreviewQuery.error instanceof Error
-                          ? talkNotePreviewQuery.error.message
-                          : null
-                      }
-                      isLoadingPreview={
-                        talkNotePreviewQuery.isPending || talkNotePreviewQuery.isFetching
-                      }
-                      isCreating={createTalkNoteMutation.isPending}
-                      onTopicChange={setTalkTopic}
-                      onBodyChange={setTalkBody}
-                      onProjectChange={setTalkProject}
-                      onThreadChange={setTalkThread}
-                      onRefsChange={setTalkRefsInput}
-                      onCreate={() => void handleCreateTalkNote()}
-                    />
                   </div>
                 </div>
               ) : null}
@@ -659,45 +737,71 @@ function NilusRouteView() {
                     />
                   </section>
 
-                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                    {selectedTask ? (
-                      <TaskWorkflowPanel
-                        task={selectedTask}
-                        context={taskContextQuery.data ?? null}
-                        preview={taskCompletionPreviewQuery.data ?? null}
-                        contextError={
-                          taskContextQuery.error instanceof Error
-                            ? taskContextQuery.error.message
-                            : null
-                        }
-                        previewError={
-                          taskCompletionPreviewQuery.error instanceof Error
-                            ? taskCompletionPreviewQuery.error.message
-                            : null
-                        }
-                        isLoadingContext={taskContextQuery.isPending || taskContextQuery.isFetching}
-                        isLoadingPreview={
-                          taskCompletionPreviewQuery.isPending ||
-                          taskCompletionPreviewQuery.isFetching
-                        }
-                        isCompleting={completeTaskMutation.isPending}
-                        onComplete={() => void handleCompleteTask()}
-                        onOpenDocument={(documentPath) => {
-                          const domain = taskContextQuery.data?.relatedDocuments.find(
-                            (entry) => entry.path === documentPath,
-                          )?.domain;
-                          if (domain) {
-                            setView(domain);
-                            setSelectedDocumentPath(documentPath);
+                  <div className="space-y-4">
+                    <TaskComposer
+                      description={taskDescription}
+                      priority={taskPriority}
+                      project={taskProject}
+                      owner={taskOwner}
+                      thread={taskThread}
+                      preview={taskDraftPreviewQuery.data ?? null}
+                      previewError={
+                        taskDraftPreviewQuery.error instanceof Error
+                          ? taskDraftPreviewQuery.error.message
+                          : null
+                      }
+                      isLoadingPreview={
+                        taskDraftPreviewQuery.isPending || taskDraftPreviewQuery.isFetching
+                      }
+                      isCreating={createTaskMutation.isPending}
+                      onDescriptionChange={setTaskDescription}
+                      onPriorityChange={setTaskPriority}
+                      onProjectChange={setTaskProject}
+                      onOwnerChange={setTaskOwner}
+                      onThreadChange={setTaskThread}
+                      onCreate={() => void handleCreateTask()}
+                    />
+
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      {selectedTask ? (
+                        <TaskWorkflowPanel
+                          task={selectedTask}
+                          context={taskContextQuery.data ?? null}
+                          preview={taskCompletionPreviewQuery.data ?? null}
+                          contextError={
+                            taskContextQuery.error instanceof Error
+                              ? taskContextQuery.error.message
+                              : null
                           }
-                        }}
-                      />
-                    ) : (
-                      <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
-                        Select a task to inspect its continuity context.
-                      </div>
-                    )}
-                  </section>
+                          previewError={
+                            taskCompletionPreviewQuery.error instanceof Error
+                              ? taskCompletionPreviewQuery.error.message
+                              : null
+                          }
+                          isLoadingContext={taskContextQuery.isPending || taskContextQuery.isFetching}
+                          isLoadingPreview={
+                            taskCompletionPreviewQuery.isPending ||
+                            taskCompletionPreviewQuery.isFetching
+                          }
+                          isCompleting={completeTaskMutation.isPending}
+                          onComplete={() => void handleCompleteTask()}
+                          onOpenDocument={(documentPath) => {
+                            const domain = taskContextQuery.data?.relatedDocuments.find(
+                              (entry) => entry.path === documentPath,
+                            )?.domain;
+                            if (domain) {
+                              setView(domain);
+                              setSelectedDocumentPath(documentPath);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
+                          Select a task to inspect its continuity context.
+                        </div>
+                      )}
+                    </section>
+                  </div>
                 </div>
               ) : null}
 
@@ -741,25 +845,53 @@ function NilusRouteView() {
                     </div>
                   </section>
 
-                  <section className="min-h-0 rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                    {documentQuery.data ? (
-                      <>
-                        <div className="border-b border-border pb-3">
-                          <h2 className="text-sm font-semibold">{documentQuery.data.title}</h2>
-                          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                            {documentQuery.data.path}
-                          </p>
+                  <div className="space-y-4">
+                    {activeDomain === "talk" ? (
+                      <TalkNoteComposer
+                        topic={talkTopic}
+                        body={talkBody}
+                        project={talkProject}
+                        thread={talkThread}
+                        refsInput={talkRefsInput}
+                        preview={talkNotePreviewQuery.data ?? null}
+                        previewError={
+                          talkNotePreviewQuery.error instanceof Error
+                            ? talkNotePreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingPreview={
+                          talkNotePreviewQuery.isPending || talkNotePreviewQuery.isFetching
+                        }
+                        isCreating={createTalkNoteMutation.isPending}
+                        onTopicChange={setTalkTopic}
+                        onBodyChange={setTalkBody}
+                        onProjectChange={setTalkProject}
+                        onThreadChange={setTalkThread}
+                        onRefsChange={setTalkRefsInput}
+                        onCreate={() => void handleCreateTalkNote()}
+                      />
+                    ) : null}
+
+                    <section className="min-h-0 rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      {documentQuery.data ? (
+                        <>
+                          <div className="border-b border-border pb-3">
+                            <h2 className="text-sm font-semibold">{documentQuery.data.title}</h2>
+                            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                              {documentQuery.data.path}
+                            </p>
+                          </div>
+                          <pre className="mt-4 max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-xl bg-background/80 p-4 text-xs leading-6 text-foreground/92">
+                            {documentQuery.data.contents}
+                          </pre>
+                        </>
+                      ) : (
+                        <div className="flex h-full min-h-[16rem] items-center justify-center text-sm text-muted-foreground">
+                          Select a document to preview it.
                         </div>
-                        <pre className="mt-4 max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-xl bg-background/80 p-4 text-xs leading-6 text-foreground/92">
-                          {documentQuery.data.contents}
-                        </pre>
-                      </>
-                    ) : (
-                      <div className="flex h-full min-h-[16rem] items-center justify-center text-sm text-muted-foreground">
-                        Select a document to preview it.
-                      </div>
-                    )}
-                  </section>
+                      )}
+                    </section>
+                  </div>
                 </div>
               ) : null}
             </>
@@ -967,6 +1099,131 @@ function TaskList(props: {
         </button>
       ))}
     </div>
+  );
+}
+
+function TaskComposer(props: {
+  description: string;
+  priority: string;
+  project: string;
+  owner: string;
+  thread: string;
+  preview: {
+    line: string;
+    affectedFiles: readonly string[];
+  } | null;
+  previewError: string | null;
+  isLoadingPreview: boolean;
+  isCreating: boolean;
+  onDescriptionChange: (value: string) => void;
+  onPriorityChange: (value: string) => void;
+  onProjectChange: (value: string) => void;
+  onOwnerChange: (value: string) => void;
+  onThreadChange: (value: string) => void;
+  onCreate: () => void;
+}) {
+  const hasDraft = props.description.trim().length > 0;
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+      <div>
+        <h2 className="text-sm font-semibold">New task</h2>
+        <p className="text-xs text-muted-foreground">
+          Draft a new open task and preview the exact <span className="font-mono">todo.txt</span>{" "}
+          line before it is appended.
+        </p>
+      </div>
+
+      <label className="mt-4 block">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Description
+        </span>
+        <textarea
+          className="mt-2 min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-ring"
+          placeholder="Describe the next Nilus task."
+          value={props.description}
+          onChange={(event) => props.onDescriptionChange(event.target.value)}
+        />
+      </label>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Priority
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            maxLength={1}
+            placeholder="C"
+            value={props.priority}
+            onChange={(event) => props.onPriorityChange(event.target.value.toUpperCase())}
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Project
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="NilusBrowser"
+            value={props.project}
+            onChange={(event) => props.onProjectChange(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Owner
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="nilus"
+            value={props.owner}
+            onChange={(event) => props.onOwnerChange(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Thread
+          </span>
+          <input
+            className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            placeholder="nilus-browser"
+            value={props.thread}
+            onChange={(event) => props.onThreadChange(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {hasDraft
+            ? "Preview updates as you type. Create appends a new open task to todo.txt."
+            : "Enter a description to prepare a new task preview."}
+        </p>
+        <Button
+          size="sm"
+          onClick={props.onCreate}
+          disabled={props.isCreating || props.preview === null}
+        >
+          {props.isCreating ? "Creating..." : "Create task"}
+        </Button>
+      </div>
+
+      {props.previewError ? (
+        <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+          {props.previewError}
+        </div>
+      ) : props.isLoadingPreview && props.preview === null ? (
+        <div className="mt-4 text-sm text-muted-foreground">Preparing task preview...</div>
+      ) : props.preview ? (
+        <div className="mt-4 space-y-3">
+          <PreviewBlock label="todo.txt append" contents={props.preview.line} />
+          <div className="rounded-xl border border-border bg-background/70 px-3 py-3 text-xs text-muted-foreground">
+            <p>Affected files: {props.preview.affectedFiles.join(", ")}</p>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

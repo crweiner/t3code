@@ -149,6 +149,35 @@ export const NilusCompleteTaskResult = Schema.Struct({
 });
 export type NilusCompleteTaskResult = typeof NilusCompleteTaskResult.Type;
 
+export const NilusTaskDraftInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  description: TrimmedNonEmptyString,
+  priority: Schema.optional(TrimmedNonEmptyString),
+  project: Schema.optional(TrimmedNonEmptyString),
+  owner: Schema.optional(TrimmedNonEmptyString),
+  thread: Schema.optional(TrimmedNonEmptyString),
+  recur: Schema.optional(TrimmedNonEmptyString),
+  after: Schema.optional(TrimmedNonEmptyString),
+  waiting: Schema.optional(TrimmedNonEmptyString),
+});
+export type NilusTaskDraftInput = typeof NilusTaskDraftInput.Type;
+
+export const NilusTaskDraftPreview = Schema.Struct({
+  line: TrimmedNonEmptyString,
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+});
+export type NilusTaskDraftPreview = typeof NilusTaskDraftPreview.Type;
+
+export const NilusCreateTaskInput = NilusTaskDraftInput;
+export type NilusCreateTaskInput = typeof NilusCreateTaskInput.Type;
+
+export const NilusCreateTaskResult = Schema.Struct({
+  line: TrimmedNonEmptyString,
+  taskNumber: PositiveInt,
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+});
+export type NilusCreateTaskResult = typeof NilusCreateTaskResult.Type;
+
 export const NilusCommitSafety = Schema.Literals(["safe_direct", "review_preferred", "blocked"]);
 export type NilusCommitSafety = typeof NilusCommitSafety.Type;
 

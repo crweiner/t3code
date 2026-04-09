@@ -33,6 +33,8 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       completeTask: rpcClient.nilus.completeTask,
       prepareTalkNote: rpcClient.nilus.prepareTalkNote,
       createTalkNote: rpcClient.nilus.createTalkNote,
+      prepareTaskDraft: rpcClient.nilus.prepareTaskDraft,
+      createTask: rpcClient.nilus.createTask,
     },
     git: {
       pull: rpcClient.git.pull,

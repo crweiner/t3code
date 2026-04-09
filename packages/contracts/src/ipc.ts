@@ -28,12 +28,16 @@ import type {
 import type {
   NilusCompleteTaskInput,
   NilusCompleteTaskResult,
+  NilusCreateTaskInput,
+  NilusCreateTaskResult,
   NilusCreateTalkNoteInput,
   NilusCreateTalkNoteResult,
   NilusDocument,
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
+  NilusTaskDraftInput,
+  NilusTaskDraftPreview,
   NilusPrepareTaskCompletionInput,
   NilusReadDocumentInput,
   NilusTalkNoteDraftInput,
@@ -278,8 +282,12 @@ export interface EnvironmentApi {
       input: NilusPrepareTaskCompletionInput,
     ) => Promise<NilusTaskCompletionPreview>;
     completeTask: (input: NilusCompleteTaskInput) => Promise<NilusCompleteTaskResult>;
+    prepareTaskDraft: (input: NilusTaskDraftInput) => Promise<NilusTaskDraftPreview>;
+    createTask: (input: NilusCreateTaskInput) => Promise<NilusCreateTaskResult>;
     prepareTalkNote: (input: NilusTalkNoteDraftInput) => Promise<NilusTalkNotePreview>;
     createTalkNote: (input: NilusCreateTalkNoteInput) => Promise<NilusCreateTalkNoteResult>;
+    prepareTaskDraft: (input: NilusTaskDraftInput) => Promise<NilusTaskDraftPreview>;
+    createTask: (input: NilusCreateTaskInput) => Promise<NilusCreateTaskResult>;
   };
   git: {
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;

@@ -54,12 +54,14 @@ import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePat
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import {
+  createNilusTask,
   createNilusTalkNote,
   getNilusStartupSnapshot,
   getNilusTaskContext,
   listNilusDomainEntries,
   listNilusTasks,
   completeNilusTask,
+  prepareNilusTaskDraft,
   prepareNilusTaskCompletion,
   prepareNilusTalkNote,
   readNilusDocument,
@@ -863,6 +865,14 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           }),
         [WS_METHODS.nilusCreateTalkNote]: (input) =>
           observeRpcEffect(WS_METHODS.nilusCreateTalkNote, createNilusTalkNote(input), {
+            "rpc.aggregate": "nilus",
+          }),
+        [WS_METHODS.nilusPrepareTaskDraft]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusPrepareTaskDraft, prepareNilusTaskDraft(input), {
+            "rpc.aggregate": "nilus",
+          }),
+        [WS_METHODS.nilusCreateTask]: (input) =>
+          observeRpcEffect(WS_METHODS.nilusCreateTask, createNilusTask(input), {
             "rpc.aggregate": "nilus",
           }),
         [WS_METHODS.shellOpenInEditor]: (input) =>

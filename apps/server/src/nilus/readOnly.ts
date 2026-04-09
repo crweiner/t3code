@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { Effect } from "effect";
 import type {
   NilusCommitSafety,
+  NilusCreateTaskResult,
   NilusCreateTalkNoteResult,
   NilusCompleteTaskResult,
   NilusDocument,
@@ -15,6 +16,8 @@ import type {
   NilusListDomainEntriesInput,
   NilusListDomainEntriesResult,
   NilusListTasksInput,
+  NilusTaskDraftInput,
+  NilusTaskDraftPreview,
   NilusPrepareTaskCompletionInput,
   NilusTaskCompletionPreview,
   NilusTaskContext,
@@ -177,6 +180,30 @@ export const completeNilusTask = (input: { repoRoot: string; taskNumber: number 
     } satisfies NilusCompleteTaskResult;
   });
 
+export const prepareNilusTaskDraft = (input: NilusTaskDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    return yield* buildTaskDraftPreview(repoRoot, input);
+  });
+
+export const createNilusTask = (input: NilusTaskDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const preview = yield* buildTaskDraftPreview(repoRoot, input);
+    const todoPath = path.join(repoRoot, "todo.txt");
+    const todoLines = yield* readWritableLines(todoPath);
+    const existingOpenTaskCount = parseTaskLines(todoLines, "open").length;
+
+    todoLines.push(preview.line);
+    yield* writeLines(todoPath, todoLines);
+
+    return {
+      line: preview.line,
+      taskNumber: existingOpenTaskCount + 1,
+      affectedFiles: preview.affectedFiles,
+    } satisfies NilusCreateTaskResult;
+  });
+
 export const prepareNilusTalkNote = (input: NilusTalkNoteDraftInput) =>
   Effect.gen(function* () {
     const repoRoot = yield* assertNilusRepo(input.repoRoot);
@@ -215,6 +242,17 @@ interface OpenTaskSelection {
   readonly task: NilusTaskRecord;
 }
 
+interface NormalizedTaskDraftInput {
+  readonly description: string;
+  readonly priority: string;
+  readonly project: string | null;
+  readonly owner: string | null;
+  readonly thread: string | null;
+  readonly recur: string | null;
+  readonly after: string | null;
+  readonly waiting: string | null;
+}
+
 const buildTalkNotePreview = (repoRoot: string, input: NilusTalkNoteDraftInput) =>
   Effect.gen(function* () {
     const normalized = normalizeTalkNoteInput(input);
@@ -230,6 +268,15 @@ const buildTalkNotePreview = (repoRoot: string, input: NilusTalkNoteDraftInput) 
       warnings,
       commitSafety: "safe_direct",
     } satisfies NilusTalkNotePreview;
+  });
+
+const buildTaskDraftPreview = (_repoRoot: string, input: NilusTaskDraftInput) =>
+  Effect.gen(function* () {
+    const normalized = normalizeTaskDraftInput(input);
+    return {
+      line: renderTaskDraftLine(normalized),
+      affectedFiles: ["todo.txt"],
+    } satisfies NilusTaskDraftPreview;
   });
 
 const listDomainEntries = (input: { repoRoot: string; domain: NilusDomain }) =>
@@ -615,6 +662,19 @@ interface NormalizedTalkNoteInput {
   readonly refs: readonly string[];
 }
 
+function normalizeTaskDraftInput(input: NilusTaskDraftInput): NormalizedTaskDraftInput {
+  return {
+    description: input.description.trim(),
+    priority: normalizeTaskPriority(input.priority),
+    project: normalizeOptionalValue(input.project),
+    owner: normalizeOptionalValue(input.owner),
+    thread: normalizeOptionalValue(input.thread),
+    recur: normalizeOptionalValue(input.recur),
+    after: normalizeOptionalValue(input.after),
+    waiting: normalizeOptionalValue(input.waiting),
+  };
+}
+
 function normalizeTalkNoteInput(input: NilusTalkNoteDraftInput): NormalizedTalkNoteInput {
   return {
     draftId: input.draftId.trim(),
@@ -628,6 +688,16 @@ function normalizeTalkNoteInput(input: NilusTalkNoteDraftInput): NormalizedTalkN
         .filter((entry) => entry.length > 0)
         .toSorted() ?? [],
   };
+}
+
+function normalizeOptionalValue(value: string | undefined) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeTaskPriority(value: string | undefined) {
+  const trimmed = value?.trim().toUpperCase() ?? "";
+  return /^[A-Z]$/.test(trimmed) ? trimmed : "C";
 }
 
 const validateTalkNoteRefs = (repoRoot: string, refs: readonly string[]) =>
@@ -674,6 +744,31 @@ function renderTalkNoteContents(input: NormalizedTalkNoteInput) {
 
   lines.push("---", "", input.body);
   return `${lines.join("\n")}\n`;
+}
+
+function renderTaskDraftLine(input: NormalizedTaskDraftInput) {
+  const tokens = [`(${input.priority})`, formatLocalDate(new Date()), input.description];
+
+  if (input.project) {
+    tokens.push(`+${input.project}`);
+  }
+  if (input.owner) {
+    tokens.push(`@${input.owner}`);
+  }
+  if (input.thread) {
+    tokens.push(`thread:${input.thread}`);
+  }
+  if (input.recur) {
+    tokens.push(`recur:${input.recur}`);
+  }
+  if (input.after) {
+    tokens.push(`after:${input.after}`);
+  }
+  if (input.waiting) {
+    tokens.push(`waiting:${input.waiting}`);
+  }
+
+  return tokens.join(" ");
 }
 
 function buildTalkNotePath(repoRoot: string, draftId: string) {
