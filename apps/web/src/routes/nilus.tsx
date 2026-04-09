@@ -66,6 +66,10 @@ function NilusRouteView() {
   const [taskProject, setTaskProject] = useState("NilusBrowser");
   const [taskOwner, setTaskOwner] = useState("nilus");
   const [taskThread, setTaskThread] = useState("nilus-browser");
+  const [taskRecur, setTaskRecur] = useState("");
+  const [taskAfter, setTaskAfter] = useState("");
+  const [taskWaiting, setTaskWaiting] = useState("");
+  const [taskAdvancedOpen, setTaskAdvancedOpen] = useState(false);
   const [talkDraftId, setTalkDraftId] = useState(() => new Date().toISOString());
   const [talkTopic, setTalkTopic] = useState("");
   const [talkBody, setTalkBody] = useState("");
@@ -83,6 +87,9 @@ function NilusRouteView() {
   const deferredTaskProject = useDeferredValue(taskProject);
   const deferredTaskOwner = useDeferredValue(taskOwner);
   const deferredTaskThread = useDeferredValue(taskThread);
+  const deferredTaskRecur = useDeferredValue(taskRecur);
+  const deferredTaskAfter = useDeferredValue(taskAfter);
+  const deferredTaskWaiting = useDeferredValue(taskWaiting);
   const gitStatus = useGitStatus(repoRoot);
 
   const startupQuery = useQuery(
@@ -153,6 +160,9 @@ function NilusRouteView() {
         deferredTaskProject.trim(),
         deferredTaskOwner.trim(),
         deferredTaskThread.trim(),
+        deferredTaskRecur.trim(),
+        deferredTaskAfter.trim(),
+        deferredTaskWaiting.trim(),
       ]),
       description,
       ...(deferredTaskPriority.trim().length > 0
@@ -161,13 +171,19 @@ function NilusRouteView() {
       ...(deferredTaskProject.trim().length > 0 ? { project: deferredTaskProject.trim() } : {}),
       ...(deferredTaskOwner.trim().length > 0 ? { owner: deferredTaskOwner.trim() } : {}),
       ...(deferredTaskThread.trim().length > 0 ? { thread: deferredTaskThread.trim() } : {}),
+      ...(deferredTaskRecur.trim().length > 0 ? { recur: deferredTaskRecur.trim() } : {}),
+      ...(deferredTaskAfter.trim().length > 0 ? { after: deferredTaskAfter.trim() } : {}),
+      ...(deferredTaskWaiting.trim().length > 0 ? { waiting: deferredTaskWaiting.trim() } : {}),
     };
   }, [
+    deferredTaskAfter,
     deferredTaskDescription,
     deferredTaskOwner,
     deferredTaskPriority,
     deferredTaskProject,
+    deferredTaskRecur,
     deferredTaskThread,
+    deferredTaskWaiting,
     repoRoot,
   ]);
   const taskDraftPreviewQuery = useQuery(
@@ -447,10 +463,6 @@ function NilusRouteView() {
       });
       setSelectedTaskNumber(result.taskNumber);
       setTaskDescription("");
-      setTaskPriority("C");
-      setTaskProject("NilusBrowser");
-      setTaskOwner("nilus");
-      setTaskThread("nilus-browser");
     } catch (error) {
       toastManager.add({
         type: "error",
@@ -744,6 +756,10 @@ function NilusRouteView() {
                       project={taskProject}
                       owner={taskOwner}
                       thread={taskThread}
+                      recur={taskRecur}
+                      after={taskAfter}
+                      waiting={taskWaiting}
+                      advancedOpen={taskAdvancedOpen}
                       preview={taskDraftPreviewQuery.data ?? null}
                       previewError={
                         taskDraftPreviewQuery.error instanceof Error
@@ -759,6 +775,10 @@ function NilusRouteView() {
                       onProjectChange={setTaskProject}
                       onOwnerChange={setTaskOwner}
                       onThreadChange={setTaskThread}
+                      onRecurChange={setTaskRecur}
+                      onAfterChange={setTaskAfter}
+                      onWaitingChange={setTaskWaiting}
+                      onAdvancedOpenChange={setTaskAdvancedOpen}
                       onCreate={() => void handleCreateTask()}
                     />
 
@@ -1108,6 +1128,10 @@ function TaskComposer(props: {
   project: string;
   owner: string;
   thread: string;
+  recur: string;
+  after: string;
+  waiting: string;
+  advancedOpen: boolean;
   preview: {
     line: string;
     affectedFiles: readonly string[];
@@ -1120,6 +1144,10 @@ function TaskComposer(props: {
   onProjectChange: (value: string) => void;
   onOwnerChange: (value: string) => void;
   onThreadChange: (value: string) => void;
+  onRecurChange: (value: string) => void;
+  onAfterChange: (value: string) => void;
+  onWaitingChange: (value: string) => void;
+  onAdvancedOpenChange: (value: boolean) => void;
   onCreate: () => void;
 }) {
   const hasDraft = props.description.trim().length > 0;
@@ -1194,10 +1222,58 @@ function TaskComposer(props: {
         </label>
       </div>
 
+      <details
+        className="mt-3 rounded-2xl border border-border bg-background/50 px-4 py-3"
+        open={props.advancedOpen}
+        onToggle={(event) => props.onAdvancedOpenChange((event.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer text-sm font-medium text-foreground">
+          Advanced
+        </summary>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Use these fields when you need recurrence, gating, or waiting-state metadata.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Recur
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="daily"
+              value={props.recur}
+              onChange={(event) => props.onRecurChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              After
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="2026-04-10T13:30Z"
+              value={props.after}
+              onChange={(event) => props.onAfterChange(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Waiting
+            </span>
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              placeholder="person"
+              value={props.waiting}
+              onChange={(event) => props.onWaitingChange(event.target.value)}
+            />
+          </label>
+        </div>
+      </details>
+
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           {hasDraft
-            ? "Preview updates as you type. Create appends a new open task to todo.txt."
+            ? "Preview updates as you type. Create appends a new open task to todo.txt and keeps your current task context for the next entry."
             : "Enter a description to prepare a new task preview."}
         </p>
         <Button
