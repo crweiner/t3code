@@ -1,6 +1,7 @@
 import {
   BookOpenIcon,
   CheckCircle2Icon,
+  CloudUploadIcon,
   FolderSearchIcon,
   GitCommitHorizontalIcon,
   RefreshCwIcon,
@@ -9,12 +10,21 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Schema from "effect/Schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { NilusCommitSafety, NilusDomain, NilusTaskRecord } from "@t3tools/contracts";
+import {
+  PROVIDER_DISPLAY_NAMES,
+  type GitStatusResult,
+  type NilusCommitSafety,
+  type NilusDomain,
+  type NilusTaskRecord,
+  type ServerProvider,
+} from "@t3tools/contracts";
 
+import GitActionsControl from "../components/GitActionsControl";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Button } from "../components/ui/button";
 import { toastManager } from "../components/ui/toast";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
   nilusCreateTalkNoteMutationOptions,
   nilusCompleteTaskMutationOptions,
@@ -27,6 +37,7 @@ import {
   nilusTasksQueryOptions,
 } from "../lib/nilusReactQuery";
 import { readLocalApi } from "../localApi";
+import { useServerConfig } from "../rpc/serverState";
 import { isElectron } from "../env";
 import { readNativeApi } from "../nativeApi";
 
@@ -37,6 +48,7 @@ type NilusView = "overview" | "tasks" | NilusDomain;
 
 function NilusRouteView() {
   const queryClient = useQueryClient();
+  const serverConfig = useServerConfig();
   const [repoRoot, setRepoRoot] = useLocalStorage<string | null, string | null>(
     NILUS_REPO_STORAGE_KEY,
     null,
@@ -58,6 +70,7 @@ function NilusRouteView() {
   const deferredTalkProject = useDeferredValue(talkProject);
   const deferredTalkThread = useDeferredValue(talkThread);
   const deferredTalkRefsInput = useDeferredValue(talkRefsInput);
+  const gitStatus = useGitStatus(repoRoot);
 
   const startupQuery = useQuery(
     nilusStartupSnapshotQueryOptions({
@@ -194,6 +207,14 @@ function NilusRouteView() {
     }
   }, [activeDomain, domainEntriesQuery.data?.entries, selectedDocumentPath]);
 
+  useEffect(() => {
+    if (repoRoot === null) {
+      return;
+    }
+
+    void refreshGitStatus(repoRoot);
+  }, [repoRoot]);
+
   const summaryCards = useMemo(() => {
     if (!startupQuery.data) return [];
     return [
@@ -228,6 +249,7 @@ function NilusRouteView() {
     void talkNotePreviewQuery.refetch();
     void domainEntriesQuery.refetch();
     void documentQuery.refetch();
+    void refreshGitStatus(repoRoot);
   };
 
   const selectedTask =
@@ -468,6 +490,13 @@ function NilusRouteView() {
                   </section>
 
                   <div className="space-y-4">
+                    <BackendSyncPanel
+                      repoRoot={repoRoot}
+                      serverConfig={serverConfig}
+                      gitStatus={gitStatus}
+                      onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                    />
+
                     <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
                       <div className="flex items-center gap-2">
                         <BookOpenIcon className="size-4 text-muted-foreground" />
@@ -662,6 +691,133 @@ function NilusRouteView() {
         </div>
       </div>
     </SidebarInset>
+  );
+}
+
+function BackendSyncPanel(props: {
+  repoRoot: string;
+  serverConfig: ReturnType<typeof useServerConfig>;
+  gitStatus: ReturnType<typeof useGitStatus>;
+  onRefreshStatus: () => void;
+}) {
+  const providers = props.serverConfig?.providers ?? [];
+  const selectedModel = props.serverConfig?.settings.textGenerationModelSelection ?? null;
+  const syncSummary = resolveNilusSyncSummary({
+    status: props.gitStatus.data,
+    error: props.gitStatus.error?.message ?? null,
+    isPending: props.gitStatus.isPending,
+  });
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Backend and sync</h2>
+          <p className="text-xs text-muted-foreground">
+            Shows which assistant backend Nilus will prefer and how ready this repo is for
+            save, sync, and publish actions.
+          </p>
+        </div>
+        <Button size="xs" variant="outline" onClick={props.onRefreshStatus}>
+          <RefreshCwIcon className="size-3.5" />
+          Refresh sync
+        </Button>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <ContextStat
+          label="Nilus backend"
+          value={
+            selectedModel
+              ? `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} · ${selectedModel.model}`
+              : "No backend selected"
+          }
+        />
+        <ContextStat label="Repo sync" value={syncSummary.title} />
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-border bg-background/70 px-4 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Nilus recommendation
+        </p>
+        <p className="mt-2 text-sm font-medium">{syncSummary.detail}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{syncSummary.nextAction}</p>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {providers.length > 0 ? (
+          providers.map((provider) => (
+            <ProviderStatusCard
+              key={provider.provider}
+              provider={provider}
+              isSelected={provider.provider === selectedModel?.provider}
+              isFallback={provider.provider !== selectedModel?.provider && provider.status === "ready"}
+            />
+          ))
+        ) : (
+          <EmptyContext label="Provider readiness has not loaded yet." />
+        )}
+      </div>
+
+      {props.gitStatus.error ? (
+        <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+          {syncSummary.detail}
+        </div>
+      ) : props.gitStatus.data ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ContextStat
+            label="Branch"
+            value={props.gitStatus.data.branch ?? "Detached HEAD"}
+          />
+          <ContextStat
+            label="Working tree"
+            value={
+              props.gitStatus.data.hasWorkingTreeChanges
+                ? `${props.gitStatus.data.workingTree.files.length} changed files`
+                : "Clean"
+            }
+          />
+          <ContextStat
+            label="Remote"
+            value={
+              props.gitStatus.data.hasUpstream
+                ? `${props.gitStatus.data.aheadCount} ahead / ${props.gitStatus.data.behindCount} behind`
+                : props.gitStatus.data.hasOriginRemote
+                  ? "No upstream tracked"
+                  : "No origin remote"
+            }
+          />
+          <ContextStat
+            label="Pull request"
+            value={
+              props.gitStatus.data.pr
+                ? `#${props.gitStatus.data.pr.number} ${props.gitStatus.data.pr.state}`
+                : "No open PR"
+            }
+          />
+        </div>
+      ) : (
+        <div className="mt-4 text-sm text-muted-foreground">
+          {props.gitStatus.isPending ? "Loading git status..." : "Git status is not available yet."}
+        </div>
+      )}
+
+      <section className="mt-4 rounded-2xl border border-border bg-background/60 p-4">
+        <div className="flex items-center gap-2">
+          <CloudUploadIcon className="size-4 text-muted-foreground" />
+          <div>
+            <h3 className="text-sm font-semibold">Save and sync controls</h3>
+            <p className="text-xs text-muted-foreground">
+              This reuses the fork&apos;s existing git engine so Nilus can handle commit, pull,
+              push, and PR flows without dropping to a terminal.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <GitActionsControl gitCwd={props.repoRoot} activeThreadId={null} />
+        </div>
+      </section>
+    </section>
   );
 }
 
@@ -1102,6 +1258,63 @@ function SafetyPill(props: { safety: NilusCommitSafety }) {
   );
 }
 
+function ProviderStatusCard(props: {
+  provider: ServerProvider;
+  isSelected: boolean;
+  isFallback: boolean;
+}) {
+  const toneClass =
+    props.provider.status === "ready"
+      ? "border-emerald-500/30 bg-emerald-500/8"
+      : props.provider.status === "warning"
+        ? "border-amber-500/30 bg-amber-500/8"
+        : props.provider.status === "error"
+          ? "border-destructive/40 bg-destructive/6"
+          : "border-border bg-background/70";
+  const label = PROVIDER_DISPLAY_NAMES[props.provider.provider] ?? props.provider.provider;
+  const authLabel =
+    props.provider.auth.status === "authenticated"
+      ? props.provider.auth.label ?? "Authenticated"
+      : props.provider.auth.status === "unauthenticated"
+        ? "Needs sign-in"
+        : "Auth unknown";
+
+  return (
+    <article className={`rounded-2xl border px-4 py-3 ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {props.isSelected
+              ? "Current Nilus backend"
+              : props.isFallback
+                ? "Ready fallback backend"
+                : "Available backend"}
+          </p>
+        </div>
+        <span className="rounded-full border border-border/80 bg-background/70 px-2 py-1 text-[11px] font-semibold capitalize">
+          {props.provider.status}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+        <p>Auth: {authLabel}</p>
+        <p>
+          Models: {props.provider.models.length > 0 ? props.provider.models.length : "none detected"}
+        </p>
+        <p>Version: {props.provider.version ?? "unknown"}</p>
+      </div>
+
+      <p className="mt-3 text-sm">
+        {props.provider.message ??
+          (props.provider.status === "ready"
+            ? `${label} is available for Nilus-backed actions.`
+            : `${label} is not fully ready yet.`)}
+      </p>
+    </article>
+  );
+}
+
 function ContextStat(props: { label: string; value: string }) {
   return (
     <article className="rounded-2xl border border-border bg-card/50 px-3 py-3">
@@ -1145,6 +1358,92 @@ function PreviewBlock(props: { label: string; contents: string; muted?: boolean 
       </pre>
     </div>
   );
+}
+
+function resolveNilusSyncSummary(props: {
+  status: GitStatusResult | null;
+  error: string | null;
+  isPending: boolean;
+}) {
+  if (props.error) {
+    return {
+      title: "Git state unavailable",
+      detail: props.error,
+      nextAction: "Check the repo path and refresh sync status before trying save or publish actions.",
+    };
+  }
+
+  if (props.isPending && props.status === null) {
+    return {
+      title: "Checking repo state",
+      detail: "Nilus is loading branch, working tree, and upstream status for this repo.",
+      nextAction: "Wait for git status to load, then use the save and sync controls below.",
+    };
+  }
+
+  if (props.status === null) {
+    return {
+      title: "Git state not loaded",
+      detail: "No git snapshot is available for this repo yet.",
+      nextAction: "Refresh sync status to load the current repo state.",
+    };
+  }
+
+  if (!props.status.isRepo) {
+    return {
+      title: "Not a git repo",
+      detail: "The selected folder is not a git repository, so Nilus cannot save or sync changes here.",
+      nextAction: "Open a Nilus repo checkout before using browser save or publish actions.",
+    };
+  }
+
+  if (props.status.branch === null) {
+    return {
+      title: "Detached HEAD",
+      detail: "This repo is not on a named branch, so Nilus should not publish changes until branch state is fixed.",
+      nextAction: "Switch to a branch before using commit or push flows in the browser.",
+    };
+  }
+
+  if (props.status.behindCount > 0 && props.status.hasWorkingTreeChanges) {
+    return {
+      title: "Local work plus upstream drift",
+      detail: `This repo has local edits and is ${props.status.behindCount} commit${props.status.behindCount === 1 ? "" : "s"} behind upstream.`,
+      nextAction: "Review local edits, then use pull or rebase-safe sync handling before publishing.",
+    };
+  }
+
+  if (props.status.behindCount > 0) {
+    return {
+      title: "Needs sync from remote",
+      detail: `This branch is ${props.status.behindCount} commit${props.status.behindCount === 1 ? "" : "s"} behind upstream.`,
+      nextAction: "Use the pull flow below before starting new Nilus write work.",
+    };
+  }
+
+  if (props.status.hasWorkingTreeChanges) {
+    return {
+      title: "Local changes pending save",
+      detail: `There are ${props.status.workingTree.files.length} changed file${props.status.workingTree.files.length === 1 ? "" : "s"} in the worktree.`,
+      nextAction: "Use Commit to save browser-written changes, then Push when you are ready to publish them.",
+    };
+  }
+
+  if (props.status.aheadCount > 0) {
+    return {
+      title: "Ready to publish",
+      detail: `This branch is ${props.status.aheadCount} commit${props.status.aheadCount === 1 ? "" : "s"} ahead of upstream with a clean worktree.`,
+      nextAction: props.status.pr
+        ? "Use Push to publish the latest local commits to the existing PR branch."
+        : "Use Push to publish local commits, then open a PR if review is needed.",
+    };
+  }
+
+  return {
+    title: "Repo is in sync",
+    detail: `Branch ${props.status.branch} is clean and aligned with its tracked upstream.`,
+    nextAction: "You can keep working in the browser. Nilus will only need git actions after the next durable change.",
+  };
 }
 
 function parseRefsInput(value: string) {
