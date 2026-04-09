@@ -19,11 +19,11 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 
-import GitActionsControl from "../components/GitActionsControl";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Button } from "../components/ui/button";
 import { toastManager } from "../components/ui/toast";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { gitRunStackedActionMutationOptions } from "../lib/gitReactQuery";
 import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
   nilusCreateTalkNoteMutationOptions,
@@ -37,6 +37,7 @@ import {
   nilusTasksQueryOptions,
 } from "../lib/nilusReactQuery";
 import { readLocalApi } from "../localApi";
+import { randomUUID } from "../lib/utils";
 import { useServerConfig } from "../rpc/serverState";
 import { isElectron } from "../env";
 import { readNativeApi } from "../nativeApi";
@@ -173,6 +174,12 @@ function NilusRouteView() {
       queryClient,
     }),
   );
+  const saveRepoMutation = useMutation(
+    gitRunStackedActionMutationOptions({
+      cwd: repoRoot,
+      queryClient,
+    }),
+  );
 
   useEffect(() => {
     setDraftRepoRoot(repoRoot ?? "");
@@ -254,6 +261,15 @@ function NilusRouteView() {
 
   const selectedTask =
     (tasksQuery.data ?? []).find((task) => task.number === selectedTaskNumber) ?? null;
+  const saveState = useMemo(
+    () =>
+      resolveNilusSaveState({
+        status: gitStatus.data,
+        error: gitStatus.error?.message ?? null,
+        isPending: gitStatus.isPending,
+      }),
+    [gitStatus.data, gitStatus.error, gitStatus.isPending],
+  );
 
   const pickFolder = async () => {
     const folder = await readLocalApi()?.dialogs.pickFolder();
@@ -341,6 +357,47 @@ function NilusRouteView() {
     }
   };
 
+  const handleSaveRepo = async () => {
+    if (!repoRoot || saveState.action === null) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (api) {
+      const confirmed = await api.dialogs.confirm(
+        [
+          saveState.action === "commit_push"
+            ? `Save ${saveState.unsavedFileCount} changed file${saveState.unsavedFileCount === 1 ? "" : "s"} to trunk?`
+            : `Push ${saveState.unpublishedCommitCount} local commit${saveState.unpublishedCommitCount === 1 ? "" : "s"} to trunk?`,
+          "This Nilus browser flow only publishes directly to trunk. No feature branch will be created.",
+        ].join("\n"),
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const result = await saveRepoMutation.mutateAsync({
+        actionId: randomUUID(),
+        action: saveState.action,
+        ...(saveState.action === "commit_push" ? { commitMessage: resolveNilusSaveCommitMessage(gitStatus.data) } : {}),
+      });
+      await refreshGitStatus(repoRoot);
+      toastManager.add({
+        type: "success",
+        title: saveState.action === "commit_push" ? "Saved to trunk" : "Pushed to trunk",
+        description: result.toast.description ?? result.toast.title,
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Save failed",
+        description: error instanceof Error ? error.message : "Unknown Nilus save error.",
+      });
+    }
+  };
+
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
@@ -350,6 +407,14 @@ function NilusRouteView() {
               <SidebarTrigger className="size-7 shrink-0 md:hidden" />
               <span className="text-sm font-medium text-foreground">Nilus</span>
               <div className="ms-auto flex items-center gap-2">
+                <Button
+                  size="xs"
+                  onClick={() => void handleSaveRepo()}
+                  disabled={!repoRoot || saveRepoMutation.isPending || !saveState.canSave}
+                >
+                  <CloudUploadIcon className="size-3.5" />
+                  {saveRepoMutation.isPending ? "Saving..." : "Save"}
+                </Button>
                 <Button size="xs" variant="outline" onClick={refreshAll} disabled={!repoRoot}>
                   <RefreshCwIcon className="size-3.5" />
                   Refresh
@@ -365,6 +430,14 @@ function NilusRouteView() {
               Nilus prototype
             </span>
             <div className="ms-auto flex items-center gap-2">
+              <Button
+                size="xs"
+                onClick={() => void handleSaveRepo()}
+                disabled={!repoRoot || saveRepoMutation.isPending || !saveState.canSave}
+              >
+                <CloudUploadIcon className="size-3.5" />
+                {saveRepoMutation.isPending ? "Saving..." : "Save"}
+              </Button>
               <Button size="xs" variant="outline" onClick={refreshAll} disabled={!repoRoot}>
                 <RefreshCwIcon className="size-3.5" />
                 Refresh
@@ -374,6 +447,8 @@ function NilusRouteView() {
         )}
 
         <div className="min-h-0 flex flex-1 flex-col overflow-auto p-4 sm:p-5">
+          {repoRoot ? <NilusSaveBanner saveState={saveState} isSaving={saveRepoMutation.isPending} /> : null}
+
           <section className="rounded-2xl border border-border bg-card/70 p-4 shadow-xs">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <div className="flex-1">
@@ -491,7 +566,6 @@ function NilusRouteView() {
 
                   <div className="space-y-4">
                     <BackendSyncPanel
-                      repoRoot={repoRoot}
                       serverConfig={serverConfig}
                       gitStatus={gitStatus}
                       onRefreshStatus={() => void refreshGitStatus(repoRoot)}
@@ -695,7 +769,6 @@ function NilusRouteView() {
 }
 
 function BackendSyncPanel(props: {
-  repoRoot: string;
   serverConfig: ReturnType<typeof useServerConfig>;
   gitStatus: ReturnType<typeof useGitStatus>;
   onRefreshStatus: () => void;
@@ -801,22 +874,34 @@ function BackendSyncPanel(props: {
           {props.gitStatus.isPending ? "Loading git status..." : "Git status is not available yet."}
         </div>
       )}
+    </section>
+  );
+}
 
-      <section className="mt-4 rounded-2xl border border-border bg-background/60 p-4">
-        <div className="flex items-center gap-2">
-          <CloudUploadIcon className="size-4 text-muted-foreground" />
-          <div>
-            <h3 className="text-sm font-semibold">Save and sync controls</h3>
-            <p className="text-xs text-muted-foreground">
-              This reuses the fork&apos;s existing git engine so Nilus can handle commit, pull,
-              push, and PR flows without dropping to a terminal.
-            </p>
-          </div>
+function NilusSaveBanner(props: {
+  saveState: ReturnType<typeof resolveNilusSaveState>;
+  isSaving: boolean;
+}) {
+  const toneClass =
+    props.saveState.tone === "error"
+      ? "border-destructive/40 bg-destructive/8 text-destructive"
+      : props.saveState.tone === "warning"
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+        : props.saveState.tone === "success"
+          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+          : "border-border bg-card/60 text-foreground";
+
+  return (
+    <section className={`mb-4 rounded-2xl border px-4 py-3 shadow-xs ${toneClass}`}>
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold">{props.saveState.bannerTitle}</p>
+          <p className="mt-1 text-xs opacity-90">{props.saveState.bannerDetail}</p>
         </div>
-        <div className="mt-4">
-          <GitActionsControl gitCwd={props.repoRoot} activeThreadId={null} />
+        <div className="text-xs font-medium opacity-90">
+          {props.isSaving ? "Saving to trunk now..." : props.saveState.statusLabel}
         </div>
-      </section>
+      </div>
     </section>
   );
 }
@@ -1444,6 +1529,163 @@ function resolveNilusSyncSummary(props: {
     detail: `Branch ${props.status.branch} is clean and aligned with its tracked upstream.`,
     nextAction: "You can keep working in the browser. Nilus will only need git actions after the next durable change.",
   };
+}
+
+function resolveNilusSaveState(props: {
+  status: GitStatusResult | null;
+  error: string | null;
+  isPending: boolean;
+}) {
+  if (props.error) {
+    return {
+      tone: "error" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: 0,
+      unpublishedCommitCount: 0,
+      bannerTitle: "Save unavailable",
+      bannerDetail: props.error,
+      statusLabel: "Fix repo access before saving",
+    };
+  }
+
+  if (props.isPending && props.status === null) {
+    return {
+      tone: "info" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: 0,
+      unpublishedCommitCount: 0,
+      bannerTitle: "Checking for unsaved changes",
+      bannerDetail: "Nilus is loading the current repo state before deciding whether there is anything to save.",
+      statusLabel: "Loading repo state",
+    };
+  }
+
+  if (props.status === null) {
+    return {
+      tone: "warning" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: 0,
+      unpublishedCommitCount: 0,
+      bannerTitle: "Save unavailable",
+      bannerDetail: "Git status has not loaded for this repo yet.",
+      statusLabel: "Refresh repo state",
+    };
+  }
+
+  if (!props.status.isRepo) {
+    return {
+      tone: "error" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: 0,
+      unpublishedCommitCount: 0,
+      bannerTitle: "Save unavailable",
+      bannerDetail: "The selected folder is not a git repository, so Nilus cannot save browser changes here.",
+      statusLabel: "Open a Nilus repo",
+    };
+  }
+
+  if (props.status.branch === null) {
+    return {
+      tone: "error" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: props.status.workingTree.files.length,
+      unpublishedCommitCount: props.status.aheadCount,
+      bannerTitle: "Save blocked",
+      bannerDetail: "Nilus web saves only work from trunk. This repo is currently in detached HEAD state.",
+      statusLabel: "Switch back to trunk",
+    };
+  }
+
+  if (props.status.branch !== "trunk") {
+    return {
+      tone: "error" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: props.status.workingTree.files.length,
+      unpublishedCommitCount: props.status.aheadCount,
+      bannerTitle: "Save blocked",
+      bannerDetail: `Nilus web saves only publish directly to trunk. Current branch: ${props.status.branch}.`,
+      statusLabel: "Branch must be trunk",
+    };
+  }
+
+  if (props.status.behindCount > 0) {
+    return {
+      tone: "warning" as const,
+      canSave: false,
+      action: null,
+      unsavedFileCount: props.status.workingTree.files.length,
+      unpublishedCommitCount: props.status.aheadCount,
+      bannerTitle: "Save paused until trunk is current",
+      bannerDetail: `Trunk is ${props.status.behindCount} commit${props.status.behindCount === 1 ? "" : "s"} behind upstream. Nilus will not save on top of stale trunk state.`,
+      statusLabel: "Update trunk before saving",
+    };
+  }
+
+  if (props.status.hasWorkingTreeChanges) {
+    return {
+      tone: "warning" as const,
+      canSave: true,
+      action: "commit_push" as const,
+      unsavedFileCount: props.status.workingTree.files.length,
+      unpublishedCommitCount: props.status.aheadCount,
+      bannerTitle: `${props.status.workingTree.files.length} unsaved file${props.status.workingTree.files.length === 1 ? "" : "s"} pending save`,
+      bannerDetail: "Save will commit the current browser and local repo changes, then push them directly to origin/trunk.",
+      statusLabel:
+        props.status.aheadCount > 0
+          ? `${props.status.workingTree.files.length} files changed and ${props.status.aheadCount} local commit${props.status.aheadCount === 1 ? "" : "s"} also pending push`
+          : `${props.status.workingTree.files.length} changed file${props.status.workingTree.files.length === 1 ? "" : "s"} pending commit and push`,
+    };
+  }
+
+  if (props.status.aheadCount > 0) {
+    return {
+      tone: "warning" as const,
+      canSave: true,
+      action: "push" as const,
+      unsavedFileCount: 0,
+      unpublishedCommitCount: props.status.aheadCount,
+      bannerTitle: `${props.status.aheadCount} unpublished commit${props.status.aheadCount === 1 ? "" : "s"} pending save`,
+      bannerDetail: "Save will push the already-committed local work directly to origin/trunk.",
+      statusLabel: `${props.status.aheadCount} local commit${props.status.aheadCount === 1 ? "" : "s"} waiting to push`,
+    };
+  }
+
+  return {
+    tone: "success" as const,
+    canSave: false,
+    action: null,
+    unsavedFileCount: 0,
+    unpublishedCommitCount: 0,
+    bannerTitle: "No unsaved changes",
+    bannerDetail: "This Nilus repo is clean and already synced to origin/trunk.",
+    statusLabel: "All browser changes are saved",
+  };
+}
+
+function resolveNilusSaveCommitMessage(status: GitStatusResult | null) {
+  const changedFiles = status?.workingTree.files.map((file) => file.path) ?? [];
+  if (changedFiles.length === 0) {
+    return "nilus: save browser updates";
+  }
+  if (changedFiles.every((path) => path === "todo.txt" || path === "done.txt")) {
+    return "nilus: save task updates";
+  }
+  if (changedFiles.every((path) => path.startsWith("talk-log/"))) {
+    return "nilus: save talk-log updates";
+  }
+  if (changedFiles.every((path) => path.startsWith("partners/"))) {
+    return "nilus: save partner updates";
+  }
+  if (changedFiles.every((path) => path.startsWith("issues/"))) {
+    return "nilus: save issue updates";
+  }
+  return "nilus: save browser updates";
 }
 
 function parseRefsInput(value: string) {
