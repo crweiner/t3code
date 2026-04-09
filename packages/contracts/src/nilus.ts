@@ -181,6 +181,71 @@ export type NilusCreateTaskResult = typeof NilusCreateTaskResult.Type;
 export const NilusCommitSafety = Schema.Literals(["safe_direct", "review_preferred", "blocked"]);
 export type NilusCommitSafety = typeof NilusCommitSafety.Type;
 
+export const NilusPartnerSection = Schema.Literals(["History", "Known Issues", "TODO", "Related"]);
+export type NilusPartnerSection = typeof NilusPartnerSection.Type;
+
+export const NilusIssueSection = Schema.Literals([
+  "Symptoms",
+  "Root Cause",
+  "Resolution",
+  "Affected Partners",
+  "Related",
+]);
+export type NilusIssueSection = typeof NilusIssueSection.Type;
+
+export const NilusMemoryMutationPreview = Schema.Struct({
+  domain: Schema.Literals(["partners", "issues"]),
+  mode: Schema.Literals(["create", "update"]),
+  path: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  contents: Schema.String,
+  affectedFiles: Schema.Array(TrimmedNonEmptyString),
+  warnings: Schema.Array(TrimmedNonEmptyString),
+  commitSafety: NilusCommitSafety,
+});
+export type NilusMemoryMutationPreview = typeof NilusMemoryMutationPreview.Type;
+
+export const NilusMemoryMutationResult = NilusMemoryMutationPreview;
+export type NilusMemoryMutationResult = typeof NilusMemoryMutationResult.Type;
+
+export const NilusPartnerDraftInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  slug: Schema.optional(TrimmedNonEmptyString),
+  primarySite: Schema.optional(TrimmedNonEmptyString),
+  owner: Schema.optional(TrimmedNonEmptyString),
+  status: Schema.optional(TrimmedNonEmptyString),
+  lastReviewed: Schema.optional(TrimmedNonEmptyString),
+  historyNote: Schema.optional(TrimmedNonEmptyString),
+});
+export type NilusPartnerDraftInput = typeof NilusPartnerDraftInput.Type;
+
+export const NilusPartnerUpdateInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+  section: NilusPartnerSection,
+  entry: TrimmedNonEmptyString,
+});
+export type NilusPartnerUpdateInput = typeof NilusPartnerUpdateInput.Type;
+
+export const NilusIssueDraftInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  slug: Schema.optional(TrimmedNonEmptyString),
+  symptoms: Schema.optional(TrimmedNonEmptyString),
+  rootCause: Schema.optional(TrimmedNonEmptyString),
+  resolution: Schema.optional(TrimmedNonEmptyString),
+});
+export type NilusIssueDraftInput = typeof NilusIssueDraftInput.Type;
+
+export const NilusIssueUpdateInput = Schema.Struct({
+  repoRoot: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+  section: NilusIssueSection,
+  entry: TrimmedNonEmptyString,
+});
+export type NilusIssueUpdateInput = typeof NilusIssueUpdateInput.Type;
+
 export const NilusTalkNoteDraftInput = Schema.Struct({
   repoRoot: TrimmedNonEmptyString,
   draftId: TrimmedNonEmptyString,

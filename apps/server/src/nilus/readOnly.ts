@@ -5,6 +5,14 @@ import * as path from "node:path";
 import { Effect } from "effect";
 import type {
   NilusCommitSafety,
+  NilusIssueDraftInput,
+  NilusIssueSection,
+  NilusIssueUpdateInput,
+  NilusMemoryMutationPreview,
+  NilusMemoryMutationResult,
+  NilusPartnerDraftInput,
+  NilusPartnerSection,
+  NilusPartnerUpdateInput,
   NilusCreateTaskResult,
   NilusCreateTalkNoteResult,
   NilusCompleteTaskResult,
@@ -234,6 +242,70 @@ export const createNilusTalkNote = (input: NilusTalkNoteDraftInput) =>
     } satisfies NilusCreateTalkNoteResult;
   });
 
+export const prepareNilusPartnerDraft = (input: NilusPartnerDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    return yield* buildPartnerDraftPreview(repoRoot, input);
+  });
+
+export const createNilusPartner = (input: NilusPartnerDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const preview = yield* buildPartnerDraftPreview(repoRoot, input);
+    yield* writeTextFile(path.join(repoRoot, preview.path), preview.contents);
+    return {
+      ...preview,
+    } satisfies NilusMemoryMutationResult;
+  });
+
+export const prepareNilusPartnerUpdate = (input: NilusPartnerUpdateInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    return yield* buildPartnerUpdatePreview(repoRoot, input);
+  });
+
+export const updateNilusPartner = (input: NilusPartnerUpdateInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const preview = yield* buildPartnerUpdatePreview(repoRoot, input);
+    yield* writeTextFile(path.join(repoRoot, preview.path), preview.contents);
+    return {
+      ...preview,
+    } satisfies NilusMemoryMutationResult;
+  });
+
+export const prepareNilusIssueDraft = (input: NilusIssueDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    return yield* buildIssueDraftPreview(repoRoot, input);
+  });
+
+export const createNilusIssue = (input: NilusIssueDraftInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const preview = yield* buildIssueDraftPreview(repoRoot, input);
+    yield* writeTextFile(path.join(repoRoot, preview.path), preview.contents);
+    return {
+      ...preview,
+    } satisfies NilusMemoryMutationResult;
+  });
+
+export const prepareNilusIssueUpdate = (input: NilusIssueUpdateInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    return yield* buildIssueUpdatePreview(repoRoot, input);
+  });
+
+export const updateNilusIssue = (input: NilusIssueUpdateInput) =>
+  Effect.gen(function* () {
+    const repoRoot = yield* assertNilusRepo(input.repoRoot);
+    const preview = yield* buildIssueUpdatePreview(repoRoot, input);
+    yield* writeTextFile(path.join(repoRoot, preview.path), preview.contents);
+    return {
+      ...preview,
+    } satisfies NilusMemoryMutationResult;
+  });
+
 interface OpenTaskSelection {
   readonly lineNumber: number;
   readonly line: string;
@@ -251,6 +323,36 @@ interface NormalizedTaskDraftInput {
   readonly recur: string | null;
   readonly after: string | null;
   readonly waiting: string | null;
+}
+
+interface NormalizedPartnerDraftInput {
+  readonly name: string;
+  readonly slug: string;
+  readonly primarySite: string | null;
+  readonly owner: string | null;
+  readonly status: string | null;
+  readonly lastReviewed: string | null;
+  readonly historyNote: string | null;
+}
+
+interface NormalizedPartnerUpdateInput {
+  readonly path: string;
+  readonly section: NilusPartnerSection;
+  readonly entry: string;
+}
+
+interface NormalizedIssueDraftInput {
+  readonly title: string;
+  readonly slug: string;
+  readonly symptoms: string | null;
+  readonly rootCause: string | null;
+  readonly resolution: string | null;
+}
+
+interface NormalizedIssueUpdateInput {
+  readonly path: string;
+  readonly section: NilusIssueSection;
+  readonly entry: string;
 }
 
 const buildTalkNotePreview = (repoRoot: string, input: NilusTalkNoteDraftInput) =>
@@ -277,6 +379,110 @@ const buildTaskDraftPreview = (_repoRoot: string, input: NilusTaskDraftInput) =>
       line: renderTaskDraftLine(normalized),
       affectedFiles: ["todo.txt"],
     } satisfies NilusTaskDraftPreview;
+  });
+
+const buildPartnerDraftPreview = (repoRoot: string, input: NilusPartnerDraftInput) =>
+  Effect.gen(function* () {
+    const normalized = normalizePartnerDraftInput(input);
+    const relativePath = path.posix.join("partners", `${normalized.slug}.md`);
+    const absolutePath = path.join(repoRoot, relativePath);
+
+    if (NFS.existsSync(absolutePath)) {
+      return yield* new NilusReadError({
+        message: `Partner file already exists: ${relativePath}`,
+      });
+    }
+
+    return {
+      domain: "partners",
+      mode: "create",
+      path: relativePath,
+      title: normalized.name,
+      contents: renderPartnerContents(normalized),
+      affectedFiles: [relativePath],
+      warnings: [],
+      commitSafety: "review_preferred",
+    } satisfies NilusMemoryMutationPreview;
+  });
+
+const buildPartnerUpdatePreview = (repoRoot: string, input: NilusPartnerUpdateInput) =>
+  Effect.gen(function* () {
+    const normalized = normalizePartnerUpdateInput(input);
+    const absolutePath = yield* resolveRepoRelativePath(repoRoot, normalized.path);
+    if (classifyDomain(normalized.path) !== "partners") {
+      return yield* new NilusReadError({
+        message: "Partner updates must stay within partners/.",
+      });
+    }
+    const currentContents = yield* readTextFile(absolutePath);
+    const updatedContents = yield* appendMarkdownSection(
+      currentContents,
+      normalized.section,
+      normalized.entry,
+    );
+
+    return {
+      domain: "partners",
+      mode: "update",
+      path: normalized.path,
+      title: deriveDocumentTitle(normalized.path, updatedContents),
+      contents: updatedContents,
+      affectedFiles: [normalized.path],
+      warnings: [],
+      commitSafety: "review_preferred",
+    } satisfies NilusMemoryMutationPreview;
+  });
+
+const buildIssueDraftPreview = (repoRoot: string, input: NilusIssueDraftInput) =>
+  Effect.gen(function* () {
+    const normalized = normalizeIssueDraftInput(input);
+    const relativePath = path.posix.join("issues", `${normalized.slug}.md`);
+    const absolutePath = path.join(repoRoot, relativePath);
+
+    if (NFS.existsSync(absolutePath)) {
+      return yield* new NilusReadError({
+        message: `Issue file already exists: ${relativePath}`,
+      });
+    }
+
+    return {
+      domain: "issues",
+      mode: "create",
+      path: relativePath,
+      title: normalized.title,
+      contents: renderIssueContents(normalized),
+      affectedFiles: [relativePath],
+      warnings: [],
+      commitSafety: "review_preferred",
+    } satisfies NilusMemoryMutationPreview;
+  });
+
+const buildIssueUpdatePreview = (repoRoot: string, input: NilusIssueUpdateInput) =>
+  Effect.gen(function* () {
+    const normalized = normalizeIssueUpdateInput(input);
+    const absolutePath = yield* resolveRepoRelativePath(repoRoot, normalized.path);
+    if (classifyDomain(normalized.path) !== "issues") {
+      return yield* new NilusReadError({
+        message: "Issue updates must stay within issues/.",
+      });
+    }
+    const currentContents = yield* readTextFile(absolutePath);
+    const updatedContents = yield* appendMarkdownSection(
+      currentContents,
+      normalized.section,
+      normalized.entry,
+    );
+
+    return {
+      domain: "issues",
+      mode: "update",
+      path: normalized.path,
+      title: deriveDocumentTitle(normalized.path, updatedContents),
+      contents: updatedContents,
+      affectedFiles: [normalized.path],
+      warnings: [],
+      commitSafety: "review_preferred",
+    } satisfies NilusMemoryMutationPreview;
   });
 
 const listDomainEntries = (input: { repoRoot: string; domain: NilusDomain }) =>
@@ -675,6 +881,44 @@ function normalizeTaskDraftInput(input: NilusTaskDraftInput): NormalizedTaskDraf
   };
 }
 
+function normalizePartnerDraftInput(input: NilusPartnerDraftInput): NormalizedPartnerDraftInput {
+  return {
+    name: input.name.trim(),
+    slug: normalizeSlugInput(input.slug, input.name),
+    primarySite: normalizeOptionalValue(input.primarySite),
+    owner: normalizeOptionalValue(input.owner),
+    status: normalizeOptionalValue(input.status),
+    lastReviewed: normalizeOptionalValue(input.lastReviewed),
+    historyNote: normalizeOptionalValue(input.historyNote),
+  };
+}
+
+function normalizePartnerUpdateInput(input: NilusPartnerUpdateInput): NormalizedPartnerUpdateInput {
+  return {
+    path: input.path.trim().replaceAll("\\", "/"),
+    section: input.section,
+    entry: input.entry.trim(),
+  };
+}
+
+function normalizeIssueDraftInput(input: NilusIssueDraftInput): NormalizedIssueDraftInput {
+  return {
+    title: input.title.trim(),
+    slug: normalizeSlugInput(input.slug, input.title),
+    symptoms: normalizeOptionalValue(input.symptoms),
+    rootCause: normalizeOptionalValue(input.rootCause),
+    resolution: normalizeOptionalValue(input.resolution),
+  };
+}
+
+function normalizeIssueUpdateInput(input: NilusIssueUpdateInput): NormalizedIssueUpdateInput {
+  return {
+    path: input.path.trim().replaceAll("\\", "/"),
+    section: input.section,
+    entry: input.entry.trim(),
+  };
+}
+
 function normalizeTalkNoteInput(input: NilusTalkNoteDraftInput): NormalizedTalkNoteInput {
   return {
     draftId: input.draftId.trim(),
@@ -698,6 +942,18 @@ function normalizeOptionalValue(value: string | undefined) {
 function normalizeTaskPriority(value: string | undefined) {
   const trimmed = value?.trim().toUpperCase() ?? "";
   return /^[A-Z]$/.test(trimmed) ? trimmed : "C";
+}
+
+function normalizeSlugInput(explicitSlug: string | undefined, fallbackTitle: string) {
+  const raw = explicitSlug?.trim() || fallbackTitle.trim();
+  const slug = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-/, "")
+    .replace(/-$/, "");
+
+  return slug.length > 0 ? slug : "nilus-entry";
 }
 
 const validateTalkNoteRefs = (repoRoot: string, refs: readonly string[]) =>
@@ -746,6 +1002,80 @@ function renderTalkNoteContents(input: NormalizedTalkNoteInput) {
   return `${lines.join("\n")}\n`;
 }
 
+function renderPartnerContents(input: NormalizedPartnerDraftInput) {
+  const lines = [
+    `# ${input.name}`,
+    "",
+    "## Overview",
+    "",
+    `- **Primary site**: ${input.primarySite ?? ""}`,
+    `- **Owner**: ${input.owner ?? ""}`,
+    `- **Status**: ${input.status ?? ""}`,
+    `- **Last reviewed**: ${input.lastReviewed ?? ""}`,
+    "",
+    "## Environment",
+    "",
+    "- Hosting:",
+    "- Platform:",
+    "- Key integrations:",
+    "- Key contacts:",
+    "",
+    "## History",
+    "",
+  ];
+
+  if (input.historyNote) {
+    lines.push(renderMarkdownBullet(input.historyNote));
+  } else {
+    lines.push("<!-- Chronological notes on interactions, support findings, and resolutions -->");
+  }
+
+  lines.push(
+    "",
+    "## Known Issues",
+    "",
+    "<!-- Ongoing or recurring problems -->",
+    "",
+    "## TODO",
+    "",
+    "<!-- Contextual backlog that may later be promoted to todo.txt -->",
+    "",
+    "## Related",
+    "",
+    "<!-- Links to issues/, knowledge/, notes/, or talk-log files -->",
+  );
+
+  return `${lines.join("\n")}\n`;
+}
+
+function renderIssueContents(input: NormalizedIssueDraftInput) {
+  const lines = [
+    `# ${input.title}`,
+    "",
+    "## Symptoms",
+    "",
+    input.symptoms ? renderMarkdownBullet(input.symptoms) : "<!-- What the partner or team sees -->",
+    "",
+    "## Root Cause",
+    "",
+    input.rootCause ? renderMarkdownBullet(input.rootCause) : "<!-- What appears to be happening -->",
+    "",
+    "## Resolution",
+    "",
+    input.resolution ? renderMarkdownBullet(input.resolution) : "<!-- How it was fixed or mitigated -->",
+    "",
+    "## Affected Partners",
+    "",
+    "<!-- Links to partner files where this issue appeared -->",
+    "",
+    "## Related",
+    "",
+    "<!-- Links to knowledge/ files, workflows/, or other issues -->",
+  ];
+
+  return `${lines.join("\n")}\n`;
+}
+
 function renderTaskDraftLine(input: NormalizedTaskDraftInput) {
   const tokens = [`(${input.priority})`, formatLocalDate(new Date()), input.description];
 
@@ -769,6 +1099,54 @@ function renderTaskDraftLine(input: NormalizedTaskDraftInput) {
   }
 
   return tokens.join(" ");
+}
+
+const appendMarkdownSection = (contents: string, section: string, entry: string) =>
+  Effect.gen(function* () {
+    const normalizedContents = contents.replace(/\r\n/g, "\n");
+    const lines = normalizedContents.split("\n");
+    const headingIndex = lines.findIndex((line) => line.trim() === `## ${section}`);
+
+    if (headingIndex === -1) {
+      return yield* new NilusReadError({
+        message: `Could not find section "${section}" in the selected document.`,
+      });
+    }
+
+    let nextHeadingIndex = lines.findIndex(
+      (line, index) => index > headingIndex && line.trim().startsWith("## "),
+    );
+    if (nextHeadingIndex === -1) {
+      nextHeadingIndex = lines.length;
+    }
+
+    const before = lines.slice(0, nextHeadingIndex);
+    while (before.length > headingIndex + 1 && before.at(-1) === "") {
+      before.pop();
+    }
+
+    const after = lines.slice(nextHeadingIndex);
+    while (after.length > 0 && after[0] === "") {
+      after.shift();
+    }
+
+    const insertedBlock = [renderMarkdownBullet(entry)];
+    const nextLines = [...before, "", ...insertedBlock, "", ...after];
+    return `${nextLines.join("\n").replace(/\n+$/, "\n")}`;
+  });
+
+function renderMarkdownBullet(value: string) {
+  const normalized = value.replace(/\r\n/g, "\n").trim();
+  if (normalized.startsWith("- ") || normalized.startsWith("[") || normalized.startsWith("<!--")) {
+    return normalized;
+  }
+
+  const [firstLine = "", ...rest] = normalized.split("\n");
+  if (rest.length === 0) {
+    return `- ${firstLine}`;
+  }
+
+  return [`- ${firstLine}`, ...rest.map((line) => `  ${line}`)].join("\n");
 }
 
 function buildTalkNotePath(repoRoot: string, draftId: string) {

@@ -55,6 +55,12 @@ import {
 import {
   NilusCreateTaskInput,
   NilusCreateTaskResult,
+  NilusIssueDraftInput,
+  NilusIssueUpdateInput,
+  NilusMemoryMutationPreview,
+  NilusMemoryMutationResult,
+  NilusPartnerDraftInput,
+  NilusPartnerUpdateInput,
   NilusCreateTalkNoteInput,
   NilusCreateTalkNoteResult,
   NilusCompleteTaskInput,
@@ -116,6 +122,14 @@ export const WS_METHODS = {
   nilusCreateTask: "nilus.createTask",
   nilusPrepareTalkNote: "nilus.prepareTalkNote",
   nilusCreateTalkNote: "nilus.createTalkNote",
+  nilusPreparePartnerDraft: "nilus.preparePartnerDraft",
+  nilusCreatePartner: "nilus.createPartner",
+  nilusPreparePartnerUpdate: "nilus.preparePartnerUpdate",
+  nilusUpdatePartner: "nilus.updatePartner",
+  nilusPrepareIssueDraft: "nilus.prepareIssueDraft",
+  nilusCreateIssue: "nilus.createIssue",
+  nilusPrepareIssueUpdate: "nilus.prepareIssueUpdate",
+  nilusUpdateIssue: "nilus.updateIssue",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -260,6 +274,54 @@ export const WsNilusPrepareTalkNoteRpc = Rpc.make(WS_METHODS.nilusPrepareTalkNot
 export const WsNilusCreateTalkNoteRpc = Rpc.make(WS_METHODS.nilusCreateTalkNote, {
   payload: NilusCreateTalkNoteInput,
   success: NilusCreateTalkNoteResult,
+  error: NilusReadError,
+});
+
+export const WsNilusPreparePartnerDraftRpc = Rpc.make(WS_METHODS.nilusPreparePartnerDraft, {
+  payload: NilusPartnerDraftInput,
+  success: NilusMemoryMutationPreview,
+  error: NilusReadError,
+});
+
+export const WsNilusCreatePartnerRpc = Rpc.make(WS_METHODS.nilusCreatePartner, {
+  payload: NilusPartnerDraftInput,
+  success: NilusMemoryMutationResult,
+  error: NilusReadError,
+});
+
+export const WsNilusPreparePartnerUpdateRpc = Rpc.make(WS_METHODS.nilusPreparePartnerUpdate, {
+  payload: NilusPartnerUpdateInput,
+  success: NilusMemoryMutationPreview,
+  error: NilusReadError,
+});
+
+export const WsNilusUpdatePartnerRpc = Rpc.make(WS_METHODS.nilusUpdatePartner, {
+  payload: NilusPartnerUpdateInput,
+  success: NilusMemoryMutationResult,
+  error: NilusReadError,
+});
+
+export const WsNilusPrepareIssueDraftRpc = Rpc.make(WS_METHODS.nilusPrepareIssueDraft, {
+  payload: NilusIssueDraftInput,
+  success: NilusMemoryMutationPreview,
+  error: NilusReadError,
+});
+
+export const WsNilusCreateIssueRpc = Rpc.make(WS_METHODS.nilusCreateIssue, {
+  payload: NilusIssueDraftInput,
+  success: NilusMemoryMutationResult,
+  error: NilusReadError,
+});
+
+export const WsNilusPrepareIssueUpdateRpc = Rpc.make(WS_METHODS.nilusPrepareIssueUpdate, {
+  payload: NilusIssueUpdateInput,
+  success: NilusMemoryMutationPreview,
+  error: NilusReadError,
+});
+
+export const WsNilusUpdateIssueRpc = Rpc.make(WS_METHODS.nilusUpdateIssue, {
+  payload: NilusIssueUpdateInput,
+  success: NilusMemoryMutationResult,
   error: NilusReadError,
 });
 
@@ -455,6 +517,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsNilusCreateTaskRpc,
   WsNilusPrepareTalkNoteRpc,
   WsNilusCreateTalkNoteRpc,
+  WsNilusPreparePartnerDraftRpc,
+  WsNilusCreatePartnerRpc,
+  WsNilusPreparePartnerUpdateRpc,
+  WsNilusUpdatePartnerRpc,
+  WsNilusPrepareIssueDraftRpc,
+  WsNilusCreateIssueRpc,
+  WsNilusPrepareIssueUpdateRpc,
+  WsNilusUpdateIssueRpc,
   WsShellOpenInEditorRpc,
   WsSubscribeGitStatusRpc,
   WsGitPullRpc,

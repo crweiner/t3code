@@ -49,6 +49,8 @@ import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
 import {
+  createNilusIssue,
+  createNilusPartner,
   createNilusTask,
   createNilusTalkNote,
   getNilusStartupSnapshot,
@@ -56,10 +58,16 @@ import {
   listNilusDomainEntries,
   listNilusTasks,
   completeNilusTask,
+  prepareNilusIssueDraft,
+  prepareNilusIssueUpdate,
+  prepareNilusPartnerDraft,
+  prepareNilusPartnerUpdate,
   prepareNilusTaskDraft,
   prepareNilusTalkNote,
   prepareNilusTaskCompletion,
   readNilusDocument,
+  updateNilusIssue,
+  updateNilusPartner,
 } from "./nilus/readOnly";
 
 const WsRpcLayer = WsRpcGroup.toLayer(
@@ -632,6 +640,38 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         }),
       [WS_METHODS.nilusCreateTalkNote]: (input) =>
         observeRpcEffect(WS_METHODS.nilusCreateTalkNote, createNilusTalkNote(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusPreparePartnerDraft]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusPreparePartnerDraft, prepareNilusPartnerDraft(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusCreatePartner]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusCreatePartner, createNilusPartner(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusPreparePartnerUpdate]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusPreparePartnerUpdate, prepareNilusPartnerUpdate(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusUpdatePartner]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusUpdatePartner, updateNilusPartner(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusPrepareIssueDraft]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusPrepareIssueDraft, prepareNilusIssueDraft(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusCreateIssue]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusCreateIssue, createNilusIssue(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusPrepareIssueUpdate]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusPrepareIssueUpdate, prepareNilusIssueUpdate(input), {
+          "rpc.aggregate": "nilus",
+        }),
+      [WS_METHODS.nilusUpdateIssue]: (input) =>
+        observeRpcEffect(WS_METHODS.nilusUpdateIssue, updateNilusIssue(input), {
           "rpc.aggregate": "nilus",
         }),
       [WS_METHODS.shellOpenInEditor]: (input) =>

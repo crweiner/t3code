@@ -27,6 +27,12 @@ import type {
 import type {
   NilusCreateTaskInput,
   NilusCreateTaskResult,
+  NilusIssueDraftInput,
+  NilusIssueUpdateInput,
+  NilusMemoryMutationPreview,
+  NilusMemoryMutationResult,
+  NilusPartnerDraftInput,
+  NilusPartnerUpdateInput,
   NilusCreateTalkNoteInput,
   NilusCreateTalkNoteResult,
   NilusDocument,
@@ -179,6 +185,14 @@ export interface NativeApi {
     createTask: (input: NilusCreateTaskInput) => Promise<NilusCreateTaskResult>;
     prepareTalkNote: (input: NilusTalkNoteDraftInput) => Promise<NilusTalkNotePreview>;
     createTalkNote: (input: NilusCreateTalkNoteInput) => Promise<NilusCreateTalkNoteResult>;
+    preparePartnerDraft: (input: NilusPartnerDraftInput) => Promise<NilusMemoryMutationPreview>;
+    createPartner: (input: NilusPartnerDraftInput) => Promise<NilusMemoryMutationResult>;
+    preparePartnerUpdate: (input: NilusPartnerUpdateInput) => Promise<NilusMemoryMutationPreview>;
+    updatePartner: (input: NilusPartnerUpdateInput) => Promise<NilusMemoryMutationResult>;
+    prepareIssueDraft: (input: NilusIssueDraftInput) => Promise<NilusMemoryMutationPreview>;
+    createIssue: (input: NilusIssueDraftInput) => Promise<NilusMemoryMutationResult>;
+    prepareIssueUpdate: (input: NilusIssueUpdateInput) => Promise<NilusMemoryMutationPreview>;
+    updateIssue: (input: NilusIssueUpdateInput) => Promise<NilusMemoryMutationResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
