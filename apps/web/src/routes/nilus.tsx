@@ -299,6 +299,7 @@ function NilusRouteView() {
       const result = await completeTaskMutation.mutateAsync({
         taskNumber: selectedTask.number,
       });
+      await refreshGitStatus(repoRoot);
       toastManager.add({
         type: "success",
         title: `Completed task #${selectedTask.number}`,
@@ -336,6 +337,7 @@ function NilusRouteView() {
     try {
       const { draftKey: _draftKey, ...payload } = talkNoteDraft;
       const result = await createTalkNoteMutation.mutateAsync(payload);
+      await refreshGitStatus(repoRoot);
       toastManager.add({
         type: "success",
         title: "Created talk-log note",
