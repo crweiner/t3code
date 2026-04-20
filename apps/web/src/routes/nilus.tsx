@@ -5,12 +5,15 @@ import {
   FolderSearchIcon,
   GitCommitHorizontalIcon,
   RefreshCwIcon,
+  SquarePenIcon,
 } from "lucide-react";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Schema from "effect/Schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useShallow } from "zustand/react/shallow";
 import {
+  DEFAULT_MODEL_BY_PROVIDER,
   PROVIDER_DISPLAY_NAMES,
   type GitStatusResult,
   type NilusIssueSection,
@@ -24,7 +27,10 @@ import {
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Button } from "../components/ui/button";
 import { toastManager } from "../components/ui/toast";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { useSettings } from "../hooks/useSettings";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { gitRunStackedActionMutationOptions } from "../lib/gitReactQuery";
 import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
@@ -48,27 +54,44 @@ import {
   nilusUpdateIssueMutationOptions,
   nilusUpdatePartnerMutationOptions,
 } from "../lib/nilusReactQuery";
-import { randomUUID } from "../lib/utils";
+import { newCommandId, newProjectId, randomUUID } from "../lib/utils";
 import { useServerConfig } from "../rpc/serverState";
+import { useStore } from "../store";
 import { isElectron } from "../env";
 import { readNativeApi } from "../nativeApi";
+import {
+  findProjectForRepoRoot,
+  resolveLatestNilusChatThread,
+  resolveNilusPageFromPath,
+  resolveProjectTitleFromRepoRoot,
+} from "./-nilus.logic";
 
 const NILUS_REPO_STORAGE_KEY = "t3code:nilus:repo-root:v1";
 const NilusRepoRootSchema = Schema.NullOr(Schema.String);
 const MEMORY_VIEWS: readonly NilusDomain[] = ["talk", "partners", "issues", "knowledge"];
-type NilusPage = "overview" | "tasks" | "memory" | "evidence" | "changes";
 
 function NilusRouteView() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const serverConfig = useServerConfig();
+  const { projects, sidebarThreadsById, threadIdsByProjectId } = useStore(
+    useShallow((store) => ({
+      projects: store.projects,
+      sidebarThreadsById: store.sidebarThreadsById,
+      threadIdsByProjectId: store.threadIdsByProjectId,
+    })),
+  );
+  const appSettings = useSettings();
+  const defaultThreadEnvMode = appSettings.defaultThreadEnvMode;
+  const { handleNewThread } = useHandleNewThread();
   const [repoRoot, setRepoRoot] = useLocalStorage<string | null, string | null>(
     NILUS_REPO_STORAGE_KEY,
     null,
     NilusRepoRootSchema,
   );
   const [draftRepoRoot, setDraftRepoRoot] = useState(repoRoot ?? "");
+  const [isLaunchingChat, setIsLaunchingChat] = useState(false);
   const [memoryView, setMemoryView] = useState<NilusDomain>("talk");
   const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
@@ -133,6 +156,18 @@ function NilusRouteView() {
   const deferredIssueUpdateEntry = useDeferredValue(issueUpdateEntry);
   const gitStatus = useGitStatus(repoRoot);
   const page = resolveNilusPageFromPath(pathname);
+  const nilusProject = useMemo(() => findProjectForRepoRoot(projects, repoRoot), [projects, repoRoot]);
+  const latestNilusChatThread = useMemo(
+    () =>
+      nilusProject
+        ? resolveLatestNilusChatThread({
+            projectId: nilusProject.id,
+            threadIdsByProjectId,
+            sidebarThreadsById,
+          })
+        : null,
+    [nilusProject, sidebarThreadsById, threadIdsByProjectId],
+  );
 
   const startupQuery = useQuery(
     nilusStartupSnapshotQueryOptions({
@@ -571,6 +606,10 @@ function NilusRouteView() {
     void navigate({ to: "/nilus/changes" });
   };
 
+  const goToChat = () => {
+    void navigate({ to: "/nilus/chat" });
+  };
+
   const selectedTask =
     (tasksQuery.data ?? []).find((task) => task.number === selectedTaskNumber) ?? null;
   const saveState = useMemo(
@@ -587,6 +626,73 @@ function NilusRouteView() {
     const folder = await window.nativeApi?.dialogs.pickFolder?.();
     if (folder) {
       setRepoRoot(folder);
+    }
+  };
+
+  const handleOpenNilusChat = async () => {
+    const normalizedRepoRoot = repoRoot?.trim() ?? "";
+    if (normalizedRepoRoot.length === 0 || isLaunchingChat) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (!api) {
+      return;
+    }
+
+    setIsLaunchingChat(true);
+    try {
+      let projectId = nilusProject?.id ?? null;
+      if (!projectId) {
+        projectId = newProjectId();
+        const createdAt = new Date().toISOString();
+        await api.orchestration.dispatchCommand({
+          type: "project.create",
+          commandId: newCommandId(),
+          projectId,
+          title: resolveProjectTitleFromRepoRoot(normalizedRepoRoot),
+          workspaceRoot: normalizedRepoRoot,
+          defaultModelSelection: {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          createdAt,
+        });
+      }
+
+      const storedDraftThread = useComposerDraftStore.getState().getDraftThreadByProjectId(projectId);
+      if (storedDraftThread) {
+        await handleNewThread(projectId, {
+          envMode: defaultThreadEnvMode,
+        });
+        return;
+      }
+
+      const latestThread = resolveLatestNilusChatThread({
+        projectId,
+        threadIdsByProjectId,
+        sidebarThreadsById,
+      });
+      if (latestThread) {
+        await navigate({
+          to: "/$threadId",
+          params: { threadId: latestThread.id },
+        });
+        return;
+      }
+
+      await handleNewThread(projectId, {
+        envMode: defaultThreadEnvMode,
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to open Nilus chat",
+        description:
+          error instanceof Error ? error.message : "An error occurred while opening the chat.",
+      });
+    } finally {
+      setIsLaunchingChat(false);
     }
   };
 
@@ -1043,6 +1149,7 @@ function NilusRouteView() {
                 <NilusViewButton active={page === "memory"} label="Memory" onClick={() => goToMemory()} />
                 <NilusViewButton active={page === "evidence"} label="Evidence" onClick={goToEvidence} />
                 <NilusViewButton active={page === "changes"} label="Changes" onClick={goToChanges} />
+                <NilusViewButton active={page === "chat"} label="Chat" onClick={goToChat} />
               </section>
 
               {page === "overview" ? (
@@ -1076,6 +1183,42 @@ function NilusRouteView() {
                   </section>
 
                   <div className="space-y-4">
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <SquarePenIcon className="size-4 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Nilus chat</h2>
+                          <p className="text-xs text-muted-foreground">
+                            Open or resume the repo-backed browser thread
+                          </p>
+                        </div>
+                      </div>
+                      <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                        {latestNilusChatThread
+                          ? `Resume the latest Nilus thread for ${repoRoot}.`
+                          : nilusProject
+                            ? "This repo is already registered in t3code and can start a new Nilus thread."
+                            : "Create a Nilus chat thread for the selected repo without leaving the workspace."}
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => void handleOpenNilusChat()}
+                          disabled={!repoRoot || isLaunchingChat}
+                        >
+                          <SquarePenIcon className="size-4" />
+                          {isLaunchingChat
+                            ? "Opening chat..."
+                            : latestNilusChatThread
+                              ? "Resume chat"
+                              : "Start chat"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={goToChat} disabled={!repoRoot}>
+                          Chat page
+                        </Button>
+                      </div>
+                    </section>
+
                     <BackendSyncPanel
                       serverConfig={serverConfig}
                       gitStatus={gitStatus}
@@ -1122,6 +1265,107 @@ function NilusRouteView() {
                       </div>
                     </section>
 
+                  </div>
+                </div>
+              ) : null}
+
+              {page === "chat" ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
+                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold">Nilus browser chat</h2>
+                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                          Route repo-aware chat through the existing local Codex or Claude bridge
+                          without dropping back to a terminal-first workflow.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => void handleOpenNilusChat()}
+                        disabled={!repoRoot || isLaunchingChat}
+                      >
+                        <SquarePenIcon className="size-4" />
+                        {isLaunchingChat
+                          ? "Opening chat..."
+                          : latestNilusChatThread
+                            ? "Resume chat"
+                            : "Start chat"}
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <article className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Workspace link
+                        </p>
+                        <p className="mt-2 text-sm font-medium text-foreground">
+                          {nilusProject ? "Repo connected to t3code" : "Repo will be added on launch"}
+                        </p>
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                          {repoRoot
+                            ? repoRoot
+                            : "Open a Nilus repo first, then launch or resume the matching chat thread."}
+                        </p>
+                      </article>
+
+                      <article className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Thread status
+                        </p>
+                        <p className="mt-2 text-sm font-medium text-foreground">
+                          {latestNilusChatThread ? latestNilusChatThread.title : "No existing thread yet"}
+                        </p>
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                          {latestNilusChatThread
+                            ? "The launcher reopens the newest active Nilus thread unless there is an unfinished draft for this repo."
+                            : "The first launch creates a normal t3code thread for the selected Nilus repo and keeps chat secondary to the workspace."}
+                        </p>
+                      </article>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        Chat still depends on each person's local provider setup and local
+                        credentials. Nilus is only adding the browser entry point here; durable
+                        task, talk-log, and memory actions remain explicit workspace flows until the
+                        later Nilus-native chat actions are implemented.
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void navigate({ to: "/chat/landing" })}
+                        >
+                          Open chat shell
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={goToTasks} disabled={!repoRoot}>
+                          Back to tasks
+                        </Button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="space-y-4">
+                    <BackendSyncPanel
+                      serverConfig={serverConfig}
+                      gitStatus={gitStatus}
+                      onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                    />
+
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <h2 className="text-sm font-semibold">What this route does</h2>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        This page keeps Nilus workspace-first while preserving the reason `t3code`
+                        was chosen: it already knows how to connect the browser to the local agent
+                        runtime.
+                      </p>
+                      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                        Use chat when you need deeper agent interaction on the selected repo. Use
+                        Tasks, Memory, Evidence, and Changes when the work should stay visible as a
+                        Nilus workflow instead of only living in a thread transcript.
+                      </p>
+                    </section>
                   </div>
                 </div>
               ) : null}
@@ -3045,22 +3289,6 @@ function parseRefsInput(value: string) {
     .split(/[\n,]/)
     .map((entry) => entry.trim())
     .filter((entry, index, all) => entry.length > 0 && all.indexOf(entry) === index);
-}
-
-function resolveNilusPageFromPath(pathname: string): NilusPage {
-  if (pathname.startsWith("/nilus/tasks")) {
-    return "tasks";
-  }
-  if (pathname.startsWith("/nilus/memory")) {
-    return "memory";
-  }
-  if (pathname.startsWith("/nilus/evidence")) {
-    return "evidence";
-  }
-  if (pathname.startsWith("/nilus/changes")) {
-    return "changes";
-  }
-  return "overview";
 }
 
 export const Route = createFileRoute("/nilus")({

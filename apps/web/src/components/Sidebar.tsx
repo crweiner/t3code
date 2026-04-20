@@ -571,7 +571,15 @@ function NilusSidebarNav({
   onNavigate,
 }: {
   pathname: string;
-  onNavigate: (to: "/nilus" | "/nilus/tasks" | "/nilus/memory" | "/nilus/evidence" | "/nilus/changes") => void;
+  onNavigate: (
+    to:
+      | "/nilus"
+      | "/nilus/tasks"
+      | "/nilus/memory"
+      | "/nilus/evidence"
+      | "/nilus/changes"
+      | "/nilus/chat",
+  ) => void;
 }) {
   const items = [
     {
@@ -608,6 +616,13 @@ function NilusSidebarNav({
       to: "/nilus/changes" as const,
       icon: GitPullRequestIcon,
       active: pathname.startsWith("/nilus/changes"),
+    },
+    {
+      label: "Chat",
+      description: "Talk to Nilus in-browser",
+      to: "/nilus/chat" as const,
+      icon: SquarePenIcon,
+      active: pathname.startsWith("/nilus/chat"),
     },
   ];
 
@@ -797,7 +812,7 @@ export default function Sidebar() {
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname.startsWith("/settings");
   const isOnNilus = pathname.startsWith("/nilus");
-  const isOnChat = pathname === "/chat" || (!isOnSettings && !isOnNilus);
+  const isOnChat = pathname === "/chat" || pathname === "/chat/landing" || (!isOnSettings && !isOnNilus);
   const appSettings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const { activeDraftThread, activeThread, handleNewThread } = useHandleNewThread();
@@ -2206,7 +2221,7 @@ export default function Sidebar() {
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
                   }`}
-                  onClick={() => void navigate({ to: "/chat" })}
+                  onClick={() => void navigate({ to: "/chat/landing" })}
                 >
                   <SquarePenIcon className="size-3.5" />
                   <span className="text-xs">Chat</span>
@@ -2401,7 +2416,7 @@ export default function Sidebar() {
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
                   }`}
-                  onClick={() => void navigate({ to: "/chat" })}
+                  onClick={() => void navigate({ to: "/chat/landing" })}
                 >
                   <SquarePenIcon className="size-3.5" />
                   <span className="text-xs">Chat</span>

@@ -18,6 +18,7 @@ import { Route as SettingsArchivedRouteImport } from './routes/settings.archived
 import { Route as NilusTasksRouteImport } from './routes/nilus.tasks'
 import { Route as NilusMemoryRouteImport } from './routes/nilus.memory'
 import { Route as NilusEvidenceRouteImport } from './routes/nilus.evidence'
+import { Route as NilusChatRouteImport } from './routes/nilus.chat'
 import { Route as NilusChangesRouteImport } from './routes/nilus.changes'
 import { Route as ChatLandingRouteImport } from './routes/chat.landing'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
@@ -66,6 +67,11 @@ const NilusEvidenceRoute = NilusEvidenceRouteImport.update({
   path: '/evidence',
   getParentRoute: () => NilusRoute,
 } as any)
+const NilusChatRoute = NilusChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => NilusRoute,
+} as any)
 const NilusChangesRoute = NilusChangesRouteImport.update({
   id: '/changes',
   path: '/changes',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/$threadId': typeof ChatThreadIdRoute
   '/chat/landing': typeof ChatLandingRoute
   '/nilus/changes': typeof NilusChangesRoute
+  '/nilus/chat': typeof NilusChatRoute
   '/nilus/evidence': typeof NilusEvidenceRoute
   '/nilus/memory': typeof NilusMemoryRoute
   '/nilus/tasks': typeof NilusTasksRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/$threadId': typeof ChatThreadIdRoute
   '/chat/landing': typeof ChatLandingRoute
   '/nilus/changes': typeof NilusChangesRoute
+  '/nilus/chat': typeof NilusChatRoute
   '/nilus/evidence': typeof NilusEvidenceRoute
   '/nilus/memory': typeof NilusMemoryRoute
   '/nilus/tasks': typeof NilusTasksRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/_chat/$threadId': typeof ChatThreadIdRoute
   '/chat/landing': typeof ChatLandingRoute
   '/nilus/changes': typeof NilusChangesRoute
+  '/nilus/chat': typeof NilusChatRoute
   '/nilus/evidence': typeof NilusEvidenceRoute
   '/nilus/memory': typeof NilusMemoryRoute
   '/nilus/tasks': typeof NilusTasksRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/$threadId'
     | '/chat/landing'
     | '/nilus/changes'
+    | '/nilus/chat'
     | '/nilus/evidence'
     | '/nilus/memory'
     | '/nilus/tasks'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/$threadId'
     | '/chat/landing'
     | '/nilus/changes'
+    | '/nilus/chat'
     | '/nilus/evidence'
     | '/nilus/memory'
     | '/nilus/tasks'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
     | '/_chat/$threadId'
     | '/chat/landing'
     | '/nilus/changes'
+    | '/nilus/chat'
     | '/nilus/evidence'
     | '/nilus/memory'
     | '/nilus/tasks'
@@ -238,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NilusEvidenceRouteImport
       parentRoute: typeof NilusRoute
     }
+    '/nilus/chat': {
+      id: '/nilus/chat'
+      path: '/chat'
+      fullPath: '/nilus/chat'
+      preLoaderRoute: typeof NilusChatRouteImport
+      parentRoute: typeof NilusRoute
+    }
     '/nilus/changes': {
       id: '/nilus/changes'
       path: '/changes'
@@ -276,6 +295,7 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
 interface NilusRouteChildren {
   NilusChangesRoute: typeof NilusChangesRoute
+  NilusChatRoute: typeof NilusChatRoute
   NilusEvidenceRoute: typeof NilusEvidenceRoute
   NilusMemoryRoute: typeof NilusMemoryRoute
   NilusTasksRoute: typeof NilusTasksRoute
@@ -283,6 +303,7 @@ interface NilusRouteChildren {
 
 const NilusRouteChildren: NilusRouteChildren = {
   NilusChangesRoute: NilusChangesRoute,
+  NilusChatRoute: NilusChatRoute,
   NilusEvidenceRoute: NilusEvidenceRoute,
   NilusMemoryRoute: NilusMemoryRoute,
   NilusTasksRoute: NilusTasksRoute,
