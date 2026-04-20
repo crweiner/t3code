@@ -1295,21 +1295,21 @@ function NilusRouteView() {
                     </div>
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <article className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <article className="min-w-0 rounded-2xl border border-border/70 bg-background/70 p-4">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                           Workspace link
                         </p>
                         <p className="mt-2 text-sm font-medium text-foreground">
                           {nilusProject ? "Repo connected to t3code" : "Repo will be added on launch"}
                         </p>
-                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                        <p className="mt-2 break-all font-mono text-[11px] leading-relaxed text-muted-foreground">
                           {repoRoot
                             ? repoRoot
                             : "Open a Nilus repo first, then launch or resume the matching chat thread."}
                         </p>
                       </article>
 
-                      <article className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <article className="min-w-0 rounded-2xl border border-border/70 bg-background/70 p-4">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                           Thread status
                         </p>
