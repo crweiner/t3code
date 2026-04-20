@@ -2,7 +2,14 @@ import type { ProjectId } from "@t3tools/contracts";
 
 import type { Project, SidebarThreadSummary } from "../types";
 
-export type NilusPage = "overview" | "tasks" | "memory" | "evidence" | "changes" | "chat";
+export type NilusPage =
+  | "overview"
+  | "tasks"
+  | "memory"
+  | "evidence"
+  | "changes"
+  | "chat"
+  | "settings";
 
 export function resolveNilusPageFromPath(pathname: string): NilusPage {
   if (pathname.startsWith("/nilus/tasks")) {
@@ -19,6 +26,9 @@ export function resolveNilusPageFromPath(pathname: string): NilusPage {
   }
   if (pathname.startsWith("/nilus/chat")) {
     return "chat";
+  }
+  if (pathname.startsWith("/nilus/settings")) {
+    return "settings";
   }
   return "overview";
 }

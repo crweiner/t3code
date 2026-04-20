@@ -16,6 +16,7 @@ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as NilusTasksRouteImport } from './routes/nilus.tasks'
+import { Route as NilusSettingsRouteImport } from './routes/nilus.settings'
 import { Route as NilusMemoryRouteImport } from './routes/nilus.memory'
 import { Route as NilusEvidenceRouteImport } from './routes/nilus.evidence'
 import { Route as NilusChatRouteImport } from './routes/nilus.chat'
@@ -55,6 +56,11 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
 const NilusTasksRoute = NilusTasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
+  getParentRoute: () => NilusRoute,
+} as any)
+const NilusSettingsRoute = NilusSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => NilusRoute,
 } as any)
 const NilusMemoryRoute = NilusMemoryRouteImport.update({
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/nilus/chat': typeof NilusChatRoute
   '/nilus/evidence': typeof NilusEvidenceRoute
   '/nilus/memory': typeof NilusMemoryRoute
+  '/nilus/settings': typeof NilusSettingsRoute
   '/nilus/tasks': typeof NilusTasksRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/nilus/chat': typeof NilusChatRoute
   '/nilus/evidence': typeof NilusEvidenceRoute
   '/nilus/memory': typeof NilusMemoryRoute
+  '/nilus/settings': typeof NilusSettingsRoute
   '/nilus/tasks': typeof NilusTasksRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/nilus/chat': typeof NilusChatRoute
   '/nilus/evidence': typeof NilusEvidenceRoute
   '/nilus/memory': typeof NilusMemoryRoute
+  '/nilus/settings': typeof NilusSettingsRoute
   '/nilus/tasks': typeof NilusTasksRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/nilus/chat'
     | '/nilus/evidence'
     | '/nilus/memory'
+    | '/nilus/settings'
     | '/nilus/tasks'
     | '/settings/archived'
     | '/settings/general'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/nilus/chat'
     | '/nilus/evidence'
     | '/nilus/memory'
+    | '/nilus/settings'
     | '/nilus/tasks'
     | '/settings/archived'
     | '/settings/general'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/nilus/chat'
     | '/nilus/evidence'
     | '/nilus/memory'
+    | '/nilus/settings'
     | '/nilus/tasks'
     | '/settings/archived'
     | '/settings/general'
@@ -236,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NilusTasksRouteImport
       parentRoute: typeof NilusRoute
     }
+    '/nilus/settings': {
+      id: '/nilus/settings'
+      path: '/settings'
+      fullPath: '/nilus/settings'
+      preLoaderRoute: typeof NilusSettingsRouteImport
+      parentRoute: typeof NilusRoute
+    }
     '/nilus/memory': {
       id: '/nilus/memory'
       path: '/memory'
@@ -298,6 +317,7 @@ interface NilusRouteChildren {
   NilusChatRoute: typeof NilusChatRoute
   NilusEvidenceRoute: typeof NilusEvidenceRoute
   NilusMemoryRoute: typeof NilusMemoryRoute
+  NilusSettingsRoute: typeof NilusSettingsRoute
   NilusTasksRoute: typeof NilusTasksRoute
 }
 
@@ -306,6 +326,7 @@ const NilusRouteChildren: NilusRouteChildren = {
   NilusChatRoute: NilusChatRoute,
   NilusEvidenceRoute: NilusEvidenceRoute,
   NilusMemoryRoute: NilusMemoryRoute,
+  NilusSettingsRoute: NilusSettingsRoute,
   NilusTasksRoute: NilusTasksRoute,
 }
 

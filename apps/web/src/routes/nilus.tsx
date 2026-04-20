@@ -5,6 +5,7 @@ import {
   FolderSearchIcon,
   GitCommitHorizontalIcon,
   RefreshCwIcon,
+  SettingsIcon,
   SquarePenIcon,
 } from "lucide-react";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
@@ -610,6 +611,10 @@ function NilusRouteView() {
     void navigate({ to: "/nilus/chat" });
   };
 
+  const goToSettings = () => {
+    void navigate({ to: "/nilus/settings" });
+  };
+
   const selectedTask =
     (tasksQuery.data ?? []).find((task) => task.number === selectedTaskNumber) ?? null;
   const saveState = useMemo(
@@ -1150,6 +1155,7 @@ function NilusRouteView() {
                 <NilusViewButton active={page === "evidence"} label="Evidence" onClick={goToEvidence} />
                 <NilusViewButton active={page === "changes"} label="Changes" onClick={goToChanges} />
                 <NilusViewButton active={page === "chat"} label="Chat" onClick={goToChat} />
+                <NilusViewButton active={page === "settings"} label="Settings" onClick={goToSettings} />
               </section>
 
               {page === "overview" ? (
@@ -1347,10 +1353,11 @@ function NilusRouteView() {
                   </section>
 
                   <div className="space-y-4">
-                    <BackendSyncPanel
-                      serverConfig={serverConfig}
-                      gitStatus={gitStatus}
-                      onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                    <NilusSettingsRouteCard
+                      title="Backend and sync moved to Settings"
+                      description="Chat now stays focused on opening or resuming the repo-backed thread. Use the Nilus settings page for shared backend readiness and repo sync state."
+                      actionLabel="Open Settings"
+                      onAction={goToSettings}
                     />
 
                     <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
@@ -1678,10 +1685,11 @@ function NilusRouteView() {
                     </div>
                   </section>
 
-                  <BackendSyncPanel
-                    serverConfig={serverConfig}
-                    gitStatus={gitStatus}
-                    onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                  <NilusSettingsRouteCard
+                    title="Backend and sync moved to Settings"
+                    description="Evidence can stay focused on live checks and source review. Use the Nilus settings page for provider readiness, backend selection, and repo sync state."
+                    actionLabel="Open Settings"
+                    onAction={goToSettings}
                   />
                 </div>
               ) : null}
@@ -1710,11 +1718,65 @@ function NilusRouteView() {
                     </div>
                   </section>
 
+                  <NilusSettingsRouteCard
+                    title="Backend and sync moved to Settings"
+                    description="Changes remains the Nilus route for draft review and publish guidance, while the shared backend and sync panel now lives in a single workspace settings surface."
+                    actionLabel="Open Settings"
+                    onAction={goToSettings}
+                  />
+                </div>
+              ) : null}
+
+              {page === "settings" ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
                   <BackendSyncPanel
                     serverConfig={serverConfig}
                     gitStatus={gitStatus}
                     onRefreshStatus={() => void refreshGitStatus(repoRoot)}
                   />
+
+                  <div className="space-y-4">
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <SettingsIcon className="size-4 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Nilus settings</h2>
+                          <p className="text-xs text-muted-foreground">
+                            Shared runtime and repo-health controls for the workspace
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                        <p>
+                          This route centralizes the browser-facing backend and sync state so
+                          Nilus does not repeat the same readiness panel across Evidence, Changes,
+                          and Chat.
+                        </p>
+                        <p>
+                          Use the global app settings when you need provider binaries, model
+                          defaults, or broader application preferences. Use this Nilus page when
+                          you want the current repo's backend readiness and sync state in one place.
+                        </p>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/settings" })}>
+                          Open app settings
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={goToChanges}>
+                          Back to changes
+                        </Button>
+                      </div>
+                    </section>
+
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <h2 className="text-sm font-semibold">Why this route exists</h2>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        Nilus remains workspace-first. Tasks, Memory, Evidence, Changes, and Chat
+                        should each focus on their own workflow instead of restating the same
+                        backend and sync context in every right rail.
+                      </p>
+                    </section>
+                  </div>
                 </div>
               ) : null}
             </>
@@ -1831,6 +1893,34 @@ function BackendSyncPanel(props: {
           {props.gitStatus.isPending ? "Loading git status..." : "Git status is not available yet."}
         </div>
       )}
+    </section>
+  );
+}
+
+function NilusSettingsRouteCard(props: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+      <div className="flex items-center gap-2">
+        <SettingsIcon className="size-4 text-muted-foreground" />
+        <div>
+          <h2 className="text-sm font-semibold">{props.title}</h2>
+          <p className="text-xs text-muted-foreground">
+            Open the shared Nilus workspace settings surface
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{props.description}</p>
+      <div className="mt-4">
+        <Button size="sm" variant="outline" onClick={props.onAction}>
+          <SettingsIcon className="size-4" />
+          {props.actionLabel}
+        </Button>
+      </div>
     </section>
   );
 }

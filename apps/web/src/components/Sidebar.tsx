@@ -578,7 +578,8 @@ function NilusSidebarNav({
       | "/nilus/memory"
       | "/nilus/evidence"
       | "/nilus/changes"
-      | "/nilus/chat",
+      | "/nilus/chat"
+      | "/nilus/settings",
   ) => void;
 }) {
   const items = [
@@ -623,6 +624,13 @@ function NilusSidebarNav({
       to: "/nilus/chat" as const,
       icon: SquarePenIcon,
       active: pathname.startsWith("/nilus/chat"),
+    },
+    {
+      label: "Settings",
+      description: "Backend, sync, and runtime",
+      to: "/nilus/settings" as const,
+      icon: SettingsIcon,
+      active: pathname.startsWith("/nilus/settings"),
     },
   ];
 

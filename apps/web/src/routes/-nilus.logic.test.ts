@@ -17,6 +17,7 @@ describe("resolveNilusPageFromPath", () => {
     expect(resolveNilusPageFromPath("/nilus/evidence")).toBe("evidence");
     expect(resolveNilusPageFromPath("/nilus/changes")).toBe("changes");
     expect(resolveNilusPageFromPath("/nilus/chat")).toBe("chat");
+    expect(resolveNilusPageFromPath("/nilus/settings")).toBe("settings");
   });
 });
 
