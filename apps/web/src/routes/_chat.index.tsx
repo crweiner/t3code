@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { NoActiveThreadState } from "../components/NoActiveThreadState";
 
@@ -7,5 +7,8 @@ function ChatIndexRouteView() {
 }
 
 export const Route = createFileRoute("/_chat/")({
+  beforeLoad: () => {
+    throw redirect({ to: "/nilus", replace: true });
+  },
   component: ChatIndexRouteView,
 });

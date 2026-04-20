@@ -6,7 +6,7 @@ import {
   GitCommitHorizontalIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Schema from "effect/Schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,10 +57,12 @@ import { readNativeApi } from "../nativeApi";
 const NILUS_REPO_STORAGE_KEY = "t3code:nilus:repo-root:v1";
 const NilusRepoRootSchema = Schema.NullOr(Schema.String);
 const MEMORY_VIEWS: readonly NilusDomain[] = ["talk", "partners", "issues", "knowledge"];
-type NilusView = "overview" | "tasks" | NilusDomain;
+type NilusPage = "overview" | "tasks" | "memory" | "evidence" | "changes";
 
 function NilusRouteView() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const serverConfig = useServerConfig();
   const [repoRoot, setRepoRoot] = useLocalStorage<string | null, string | null>(
     NILUS_REPO_STORAGE_KEY,
@@ -68,7 +70,7 @@ function NilusRouteView() {
     NilusRepoRootSchema,
   );
   const [draftRepoRoot, setDraftRepoRoot] = useState(repoRoot ?? "");
-  const [view, setView] = useState<NilusView>("overview");
+  const [memoryView, setMemoryView] = useState<NilusDomain>("talk");
   const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
   const [taskDescription, setTaskDescription] = useState("");
@@ -131,6 +133,7 @@ function NilusRouteView() {
   const deferredIssueResolution = useDeferredValue(issueResolution);
   const deferredIssueUpdateEntry = useDeferredValue(issueUpdateEntry);
   const gitStatus = useGitStatus(repoRoot);
+  const page = resolveNilusPageFromPath(pathname);
 
   const startupQuery = useQuery(
     nilusStartupSnapshotQueryOptions({
@@ -141,12 +144,12 @@ function NilusRouteView() {
     nilusTasksQueryOptions({
       repoRoot,
       status: "open",
-      enabled: repoRoot !== null && (view === "overview" || view === "tasks"),
-      ...(view === "overview" ? { limit: 12 } : {}),
+      enabled: repoRoot !== null && (page === "overview" || page === "tasks"),
+      ...(page === "overview" ? { limit: 12 } : {}),
     }),
   );
 
-  const activeDomain = view !== "overview" && view !== "tasks" ? view : null;
+  const activeDomain = page === "memory" ? memoryView : null;
   const domainEntriesQuery = useQuery(
     nilusDomainEntriesQueryOptions({
       repoRoot,
@@ -166,14 +169,14 @@ function NilusRouteView() {
     nilusTaskContextQueryOptions({
       repoRoot,
       taskNumber: selectedTaskNumber,
-      enabled: repoRoot !== null && selectedTaskNumber !== null && view === "tasks",
+      enabled: repoRoot !== null && selectedTaskNumber !== null && page === "tasks",
     }),
   );
   const taskCompletionPreviewQuery = useQuery(
     nilusTaskCompletionPreviewQueryOptions({
       repoRoot,
       taskNumber: selectedTaskNumber,
-      enabled: repoRoot !== null && selectedTaskNumber !== null && view === "tasks",
+      enabled: repoRoot !== null && selectedTaskNumber !== null && page === "tasks",
     }),
   );
   const completeTaskMutation = useMutation(
@@ -229,7 +232,7 @@ function NilusRouteView() {
   const taskDraftPreviewQuery = useQuery(
     nilusTaskDraftPreviewQueryOptions({
       draft: taskDraft,
-      enabled: repoRoot !== null && taskDraft !== null && view === "tasks",
+      enabled: repoRoot !== null && taskDraft !== null && page === "tasks",
     }),
   );
   const createTaskMutation = useMutation(
@@ -481,12 +484,18 @@ function NilusRouteView() {
 
   useEffect(() => {
     setSelectedDocumentPath(null);
-  }, [repoRoot, view]);
+  }, [repoRoot]);
 
   useEffect(() => {
     if (activeDomain === null) return;
+    const entries = domainEntriesQuery.data?.entries ?? [];
+    if (entries.length === 0) {
+      setSelectedDocumentPath(null);
+      return;
+    }
     const firstEntry = domainEntriesQuery.data?.entries.at(0)?.path ?? null;
-    if (!selectedDocumentPath && firstEntry) {
+    const hasSelectedEntry = entries.some((entry) => entry.path === selectedDocumentPath);
+    if ((!selectedDocumentPath || !hasSelectedEntry) && firstEntry) {
       setSelectedDocumentPath(firstEntry);
     }
   }, [activeDomain, domainEntriesQuery.data?.entries, selectedDocumentPath]);
@@ -538,6 +547,29 @@ function NilusRouteView() {
     void domainEntriesQuery.refetch();
     void documentQuery.refetch();
     void refreshGitStatus(repoRoot);
+  };
+
+  const goToOverview = () => {
+    void navigate({ to: "/nilus" });
+  };
+
+  const goToTasks = () => {
+    void navigate({ to: "/nilus/tasks" });
+  };
+
+  const goToMemory = (domain?: NilusDomain) => {
+    if (domain) {
+      setMemoryView(domain);
+    }
+    void navigate({ to: "/nilus/memory" });
+  };
+
+  const goToEvidence = () => {
+    void navigate({ to: "/nilus/evidence" });
+  };
+
+  const goToChanges = () => {
+    void navigate({ to: "/nilus/changes" });
   };
 
   const selectedTask =
@@ -625,7 +657,7 @@ function NilusRouteView() {
         title: "Created talk-log note",
         description: result.path,
       });
-      setView("talk");
+      goToMemory("talk");
       setSelectedDocumentPath(result.path);
       setTalkDraftId(new Date().toISOString());
       setTalkTopic("");
@@ -705,7 +737,7 @@ function NilusRouteView() {
         title: "Created partner file",
         description: result.path,
       });
-      setView("partners");
+      goToMemory("partners");
       setSelectedDocumentPath(result.path);
       setPartnerName("");
       setPartnerSlug("");
@@ -788,7 +820,7 @@ function NilusRouteView() {
         title: "Created issue file",
         description: result.path,
       });
-      setView("issues");
+      goToMemory("issues");
       setSelectedDocumentPath(result.path);
       setIssueTitle("");
       setIssueSlug("");
@@ -1000,26 +1032,21 @@ function NilusRouteView() {
 
               <section className="mt-4 flex flex-wrap gap-2">
                 <NilusViewButton
-                  active={view === "overview"}
-                  label="Overview"
-                  onClick={() => setView("overview")}
+                  active={page === "overview"}
+                  label="Home"
+                  onClick={goToOverview}
                 />
                 <NilusViewButton
-                  active={view === "tasks"}
+                  active={page === "tasks"}
                   label="Tasks"
-                  onClick={() => setView("tasks")}
+                  onClick={goToTasks}
                 />
-                {MEMORY_VIEWS.map((memoryView) => (
-                  <NilusViewButton
-                    key={memoryView}
-                    active={view === memoryView}
-                    label={memoryView}
-                    onClick={() => setView(memoryView)}
-                  />
-                ))}
+                <NilusViewButton active={page === "memory"} label="Memory" onClick={() => goToMemory()} />
+                <NilusViewButton active={page === "evidence"} label="Evidence" onClick={goToEvidence} />
+                <NilusViewButton active={page === "changes"} label="Changes" onClick={goToChanges} />
               </section>
 
-              {view === "overview" ? (
+              {page === "overview" ? (
                 <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                   <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
                     <div className="flex items-center justify-between gap-3">
@@ -1033,8 +1060,8 @@ function NilusRouteView() {
                         size="xs"
                         variant="outline"
                         onClick={() => {
-                          setView("tasks");
                           setSelectedTaskNumber((tasksQuery.data ?? [])[0]?.number ?? null);
+                          goToTasks();
                         }}
                       >
                         View all
@@ -1044,7 +1071,7 @@ function NilusRouteView() {
                       tasks={tasksQuery.data ?? []}
                       onSelect={(task) => {
                         setSelectedTaskNumber(task.number);
-                        setView("tasks");
+                        goToTasks();
                       }}
                     />
                   </section>
@@ -1081,7 +1108,7 @@ function NilusRouteView() {
                               key={memoryView}
                               type="button"
                               className="rounded-2xl border border-border bg-background/70 p-4 text-left transition-colors hover:bg-accent/40"
-                              onClick={() => setView(memoryView)}
+                              onClick={() => goToMemory(memoryView)}
                             >
                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                                 {memoryView}
@@ -1100,7 +1127,7 @@ function NilusRouteView() {
                 </div>
               ) : null}
 
-              {view === "tasks" ? (
+              {page === "tasks" ? (
                 <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(19rem,0.78fr)_minmax(0,1.22fr)]">
                   <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
                     <div className="flex items-center justify-between gap-3">
@@ -1180,8 +1207,8 @@ function NilusRouteView() {
                               (entry) => entry.path === documentPath,
                             )?.domain;
                             if (domain) {
-                              setView(domain);
                               setSelectedDocumentPath(documentPath);
+                              goToMemory(domain);
                             }
                           }}
                         />
@@ -1195,16 +1222,26 @@ function NilusRouteView() {
                 </div>
               ) : null}
 
-              {activeDomain ? (
+              {page === "memory" && activeDomain ? (
                 <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)]">
                   <section className="min-h-0 rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-sm font-semibold capitalize">{activeDomain}</h2>
+                        <h2 className="text-sm font-semibold">Memory</h2>
                         <p className="text-xs text-muted-foreground">
                           Repo-relative documents for the selected Nilus domain.
                         </p>
                       </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {MEMORY_VIEWS.map((domain) => (
+                        <NilusViewButton
+                          key={domain}
+                          active={activeDomain === domain}
+                          label={domain}
+                          onClick={() => setMemoryView(domain)}
+                        />
+                      ))}
                     </div>
                     <div className="mt-4 space-y-2">
                       {domainEntriesQuery.data?.entries.map((entry) => {
@@ -1371,6 +1408,70 @@ function NilusRouteView() {
                       )}
                     </section>
                   </div>
+                </div>
+              ) : null}
+
+              {page === "evidence" ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <BookOpenIcon className="size-4 text-muted-foreground" />
+                      <div>
+                        <h2 className="text-sm font-semibold">Evidence workflow</h2>
+                        <p className="text-xs text-muted-foreground">
+                          Nilus should keep live provider evidence separate from durable repo memory.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                      <p>
+                        This route is the workspace-first placeholder for ContextA8C-backed checks,
+                        source attribution, and review before writing verified findings back into the repo.
+                      </p>
+                      <p>
+                        The current prototype keeps provider readiness visible here first instead of
+                        forcing users into chat to understand whether Nilus can refresh live facts.
+                      </p>
+                    </div>
+                  </section>
+
+                  <BackendSyncPanel
+                    serverConfig={serverConfig}
+                    gitStatus={gitStatus}
+                    onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                  />
+                </div>
+              ) : null}
+
+              {page === "changes" ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <GitCommitHorizontalIcon className="size-4 text-muted-foreground" />
+                      <div>
+                        <h2 className="text-sm font-semibold">Changes and publish flow</h2>
+                        <p className="text-xs text-muted-foreground">
+                          Nilus save, sync, and publish guidance for the selected repo.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                      <p>
+                        The browser flow now treats save and sync as a first-class Nilus workspace route
+                        instead of burying it inside the chat-first shell.
+                      </p>
+                      <p>
+                        Use this route to review trunk safety, current git state, and whether the next action
+                        should be refresh, save, or push.
+                      </p>
+                    </div>
+                  </section>
+
+                  <BackendSyncPanel
+                    serverConfig={serverConfig}
+                    gitStatus={gitStatus}
+                    onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                  />
                 </div>
               ) : null}
             </>
@@ -2945,6 +3046,22 @@ function parseRefsInput(value: string) {
     .split(/[\n,]/)
     .map((entry) => entry.trim())
     .filter((entry, index, all) => entry.length > 0 && all.indexOf(entry) === index);
+}
+
+function resolveNilusPageFromPath(pathname: string): NilusPage {
+  if (pathname.startsWith("/nilus/tasks")) {
+    return "tasks";
+  }
+  if (pathname.startsWith("/nilus/memory")) {
+    return "memory";
+  }
+  if (pathname.startsWith("/nilus/evidence")) {
+    return "evidence";
+  }
+  if (pathname.startsWith("/nilus/changes")) {
+    return "changes";
+  }
+  return "overview";
 }
 
 export const Route = createFileRoute("/nilus")({
