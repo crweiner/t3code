@@ -244,7 +244,7 @@ function EventRouter() {
       }
       setProjectExpanded(payload.bootstrapProjectId, true);
 
-      if (readPathname() !== "/") {
+      if (readPathname() !== "/chat") {
         return;
       }
       if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {

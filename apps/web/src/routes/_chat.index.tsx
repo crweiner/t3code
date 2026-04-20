@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
 import { SidebarTrigger } from "../components/ui/sidebar";
 
-function ChatIndexRouteView() {
+export function ChatIndexRouteView() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
       {!isElectron && (
@@ -31,5 +31,8 @@ function ChatIndexRouteView() {
 }
 
 export const Route = createFileRoute("/_chat/")({
+  beforeLoad: () => {
+    throw redirect({ to: "/nilus", replace: true });
+  },
   component: ChatIndexRouteView,
 });
