@@ -1353,13 +1353,6 @@ function NilusRouteView() {
                   </section>
 
                   <div className="space-y-4">
-                    <NilusSettingsRouteCard
-                      title="Backend and sync moved to Settings"
-                      description="Chat now stays focused on opening or resuming the repo-backed thread. Use the Nilus settings page for shared backend readiness and repo sync state."
-                      actionLabel="Open Settings"
-                      onAction={goToSettings}
-                    />
-
                     <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
                       <h2 className="text-sm font-semibold">What this route does</h2>
                       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -1685,12 +1678,6 @@ function NilusRouteView() {
                     </div>
                   </section>
 
-                  <NilusSettingsRouteCard
-                    title="Backend and sync moved to Settings"
-                    description="Evidence can stay focused on live checks and source review. Use the Nilus settings page for provider readiness, backend selection, and repo sync state."
-                    actionLabel="Open Settings"
-                    onAction={goToSettings}
-                  />
                 </div>
               ) : null}
 
@@ -1718,12 +1705,6 @@ function NilusRouteView() {
                     </div>
                   </section>
 
-                  <NilusSettingsRouteCard
-                    title="Backend and sync moved to Settings"
-                    description="Changes remains the Nilus route for draft review and publish guidance, while the shared backend and sync panel now lives in a single workspace settings surface."
-                    actionLabel="Open Settings"
-                    onAction={goToSettings}
-                  />
                 </div>
               ) : null}
 
@@ -1893,34 +1874,6 @@ function BackendSyncPanel(props: {
           {props.gitStatus.isPending ? "Loading git status..." : "Git status is not available yet."}
         </div>
       )}
-    </section>
-  );
-}
-
-function NilusSettingsRouteCard(props: {
-  title: string;
-  description: string;
-  actionLabel: string;
-  onAction: () => void;
-}) {
-  return (
-    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-      <div className="flex items-center gap-2">
-        <SettingsIcon className="size-4 text-muted-foreground" />
-        <div>
-          <h2 className="text-sm font-semibold">{props.title}</h2>
-          <p className="text-xs text-muted-foreground">
-            Open the shared Nilus workspace settings surface
-          </p>
-        </div>
-      </div>
-      <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{props.description}</p>
-      <div className="mt-4">
-        <Button size="sm" variant="outline" onClick={props.onAction}>
-          <SettingsIcon className="size-4" />
-          {props.actionLabel}
-        </Button>
-      </div>
     </section>
   );
 }
