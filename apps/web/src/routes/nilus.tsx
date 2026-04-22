@@ -65,6 +65,7 @@ import {
   resolveLatestNilusChatThread,
   resolveNilusPageFromPath,
   resolveProjectTitleFromRepoRoot,
+  resolveTaskNumberFromPath,
 } from "./-nilus.logic";
 
 const NILUS_REPO_STORAGE_KEY = "t3code:nilus:repo-root:v1";
@@ -94,7 +95,6 @@ function NilusRouteView() {
   const [draftRepoRoot, setDraftRepoRoot] = useState(repoRoot ?? "");
   const [isLaunchingChat, setIsLaunchingChat] = useState(false);
   const [memoryView, setMemoryView] = useState<NilusDomain>("talk");
-  const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
   const [taskDescription, setTaskDescription] = useState("");
   const [taskPriority, setTaskPriority] = useState("C");
@@ -157,6 +157,10 @@ function NilusRouteView() {
   const deferredIssueUpdateEntry = useDeferredValue(issueUpdateEntry);
   const gitStatus = useGitStatus(repoRoot);
   const page = resolveNilusPageFromPath(pathname);
+  const selectedTaskNumber = useMemo(() => resolveTaskNumberFromPath(pathname), [pathname]);
+  const isTaskIndexPage = page === "tasks";
+  const isTaskDetailPage = page === "taskDetail";
+  const isTaskPage = isTaskIndexPage || isTaskDetailPage;
   const nilusProject = useMemo(() => findProjectForRepoRoot(projects, repoRoot), [projects, repoRoot]);
   const latestNilusChatThread = useMemo(
     () =>
@@ -179,7 +183,7 @@ function NilusRouteView() {
     nilusTasksQueryOptions({
       repoRoot,
       status: "open",
-      enabled: repoRoot !== null && (page === "overview" || page === "tasks"),
+      enabled: repoRoot !== null && (page === "overview" || isTaskPage),
       ...(page === "overview" ? { limit: 12 } : {}),
     }),
   );
@@ -204,14 +208,14 @@ function NilusRouteView() {
     nilusTaskContextQueryOptions({
       repoRoot,
       taskNumber: selectedTaskNumber,
-      enabled: repoRoot !== null && selectedTaskNumber !== null && page === "tasks",
+      enabled: repoRoot !== null && selectedTaskNumber !== null && isTaskDetailPage,
     }),
   );
   const taskCompletionPreviewQuery = useQuery(
     nilusTaskCompletionPreviewQueryOptions({
       repoRoot,
       taskNumber: selectedTaskNumber,
-      enabled: repoRoot !== null && selectedTaskNumber !== null && page === "tasks",
+      enabled: repoRoot !== null && selectedTaskNumber !== null && isTaskDetailPage,
     }),
   );
   const completeTaskMutation = useMutation(
@@ -267,7 +271,7 @@ function NilusRouteView() {
   const taskDraftPreviewQuery = useQuery(
     nilusTaskDraftPreviewQueryOptions({
       draft: taskDraft,
-      enabled: repoRoot !== null && taskDraft !== null && page === "tasks",
+      enabled: repoRoot !== null && taskDraft !== null && isTaskIndexPage,
     }),
   );
   const createTaskMutation = useMutation(
@@ -501,23 +505,6 @@ function NilusRouteView() {
   }, [repoRoot]);
 
   useEffect(() => {
-    const openTasks = tasksQuery.data ?? [];
-    if (openTasks.length === 0) {
-      setSelectedTaskNumber(null);
-      return;
-    }
-
-    if (selectedTaskNumber === null) {
-      setSelectedTaskNumber(openTasks[0]?.number ?? null);
-      return;
-    }
-
-    if (!openTasks.some((task) => task.number === selectedTaskNumber)) {
-      setSelectedTaskNumber(openTasks[0]?.number ?? null);
-    }
-  }, [selectedTaskNumber, tasksQuery.data]);
-
-  useEffect(() => {
     setSelectedDocumentPath(null);
   }, [repoRoot]);
 
@@ -590,6 +577,13 @@ function NilusRouteView() {
 
   const goToTasks = () => {
     void navigate({ to: "/nilus/tasks" });
+  };
+
+  const goToTaskDetail = (taskNumber: number) => {
+    void navigate({
+      to: "/nilus/tasks/$taskNumber",
+      params: { taskNumber: String(taskNumber) },
+    });
   };
 
   const goToMemory = (domain?: NilusDomain) => {
@@ -731,6 +725,9 @@ function NilusRouteView() {
           ? "The next recurring task instance was also created."
           : "todo.txt and done.txt were updated.",
       });
+      if (isTaskDetailPage) {
+        await navigate({ to: "/nilus/tasks" });
+      }
     } catch (error) {
       toastManager.add({
         type: "error",
@@ -809,8 +806,11 @@ function NilusRouteView() {
         title: `Created task #${result.taskNumber}`,
         description: result.line,
       });
-      setSelectedTaskNumber(result.taskNumber);
       setTaskDescription("");
+      await navigate({
+        to: "/nilus/tasks/$taskNumber",
+        params: { taskNumber: String(result.taskNumber) },
+      });
     } catch (error) {
       toastManager.add({
         type: "error",
@@ -1147,7 +1147,7 @@ function NilusRouteView() {
                   onClick={goToOverview}
                 />
                 <NilusViewButton
-                  active={page === "tasks"}
+                  active={page === "tasks" || page === "taskDetail"}
                   label="Tasks"
                   onClick={goToTasks}
                 />
@@ -1172,7 +1172,6 @@ function NilusRouteView() {
                         size="xs"
                         variant="outline"
                         onClick={() => {
-                          setSelectedTaskNumber((tasksQuery.data ?? [])[0]?.number ?? null);
                           goToTasks();
                         }}
                       >
@@ -1182,8 +1181,7 @@ function NilusRouteView() {
                     <TaskList
                       tasks={tasksQuery.data ?? []}
                       onSelect={(task) => {
-                        setSelectedTaskNumber(task.number);
-                        goToTasks();
+                        goToTaskDetail(task.number);
                       }}
                     />
                   </section>
@@ -1371,7 +1369,7 @@ function NilusRouteView() {
               ) : null}
 
               {page === "tasks" ? (
-                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(19rem,0.78fr)_minmax(0,1.22fr)]">
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(19rem,0.82fr)_minmax(0,1.18fr)]">
                   <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -1384,8 +1382,7 @@ function NilusRouteView() {
                     <TaskList
                       tasks={tasksQuery.data ?? []}
                       dense={false}
-                      selectedTaskNumber={selectedTaskNumber}
-                      onSelect={(task) => setSelectedTaskNumber(task.number)}
+                      onSelect={(task) => goToTaskDetail(task.number)}
                     />
                   </section>
 
@@ -1423,44 +1420,121 @@ function NilusRouteView() {
                     />
 
                     <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                      {selectedTask ? (
-                        <TaskWorkflowPanel
-                          task={selectedTask}
-                          context={taskContextQuery.data ?? null}
-                          preview={taskCompletionPreviewQuery.data ?? null}
-                          contextError={
-                            taskContextQuery.error instanceof Error
-                              ? taskContextQuery.error.message
-                              : null
-                          }
-                          previewError={
-                            taskCompletionPreviewQuery.error instanceof Error
-                              ? taskCompletionPreviewQuery.error.message
-                              : null
-                          }
-                          isLoadingContext={taskContextQuery.isPending || taskContextQuery.isFetching}
-                          isLoadingPreview={
-                            taskCompletionPreviewQuery.isPending ||
-                            taskCompletionPreviewQuery.isFetching
-                          }
-                          isCompleting={completeTaskMutation.isPending}
-                          onComplete={() => void handleCompleteTask()}
-                          onOpenDocument={(documentPath) => {
-                            const domain = taskContextQuery.data?.relatedDocuments.find(
-                              (entry) => entry.path === documentPath,
-                            )?.domain;
-                            if (domain) {
-                              setSelectedDocumentPath(documentPath);
-                              goToMemory(domain);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
-                          Select a task to inspect its continuity context.
-                        </div>
-                      )}
+                      <h2 className="text-sm font-semibold">Task continuity</h2>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        Open any task from the queue to inspect its dedicated continuity view,
+                        including related documents, linked work, recent commits, and completion
+                        preview.
+                      </p>
+                      <div className="mt-4 rounded-2xl border border-dashed border-border px-4 py-10 text-center">
+                        <p className="text-sm font-medium text-foreground">
+                          Task detail now lives on its own route.
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                          Select a task on the left to open <span className="font-mono">/nilus/tasks/$taskNumber</span>.
+                        </p>
+                      </div>
                     </section>
+                  </div>
+                </div>
+              ) : null}
+
+              {page === "taskDetail" ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(18rem,0.74fr)_minmax(0,1.12fr)_minmax(18rem,0.74fr)]">
+                  <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold">Tasks</h2>
+                        <p className="text-xs text-muted-foreground">
+                          Open tasks from <span className="font-mono">todo.txt</span>. Select one to change the continuity view.
+                        </p>
+                      </div>
+                      <Button size="xs" variant="outline" onClick={goToTasks}>
+                        Task queue
+                      </Button>
+                    </div>
+                    <TaskList
+                      tasks={tasksQuery.data ?? []}
+                      dense={false}
+                      selectedTaskNumber={selectedTaskNumber}
+                      onSelect={(task) => goToTaskDetail(task.number)}
+                    />
+                  </section>
+
+                  <div className="space-y-4">
+                    {selectedTask ? (
+                      <TaskWorkflowPanel
+                        task={selectedTask}
+                        context={taskContextQuery.data ?? null}
+                        preview={taskCompletionPreviewQuery.data ?? null}
+                        contextError={
+                          taskContextQuery.error instanceof Error
+                            ? taskContextQuery.error.message
+                            : null
+                        }
+                        previewError={
+                          taskCompletionPreviewQuery.error instanceof Error
+                            ? taskCompletionPreviewQuery.error.message
+                            : null
+                        }
+                        isLoadingContext={taskContextQuery.isPending || taskContextQuery.isFetching}
+                        isLoadingPreview={
+                          taskCompletionPreviewQuery.isPending ||
+                          taskCompletionPreviewQuery.isFetching
+                        }
+                        isCompleting={completeTaskMutation.isPending}
+                        onComplete={() => void handleCompleteTask()}
+                        onOpenDocument={(documentPath) => {
+                          const domain = taskContextQuery.data?.relatedDocuments.find(
+                            (entry) => entry.path === documentPath,
+                          )?.domain;
+                          if (domain) {
+                            setSelectedDocumentPath(documentPath);
+                            goToMemory(domain);
+                          }
+                        }}
+                        onOpenTask={goToTaskDetail}
+                      />
+                    ) : tasksQuery.isPending || tasksQuery.isFetching ? (
+                      <section className="rounded-2xl border border-border bg-card/60 p-6 text-sm text-muted-foreground shadow-xs">
+                        Loading task detail...
+                      </section>
+                    ) : (
+                      <section className="rounded-2xl border border-border bg-card/60 p-6 shadow-xs">
+                        <h2 className="text-sm font-semibold">Task not found</h2>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                          Nilus could not find an open task matching <span className="font-mono">#{selectedTaskNumber ?? "unknown"}</span>. It may already be completed or no longer exist in this repo.
+                        </p>
+                        <div className="mt-4">
+                          <Button size="sm" variant="outline" onClick={goToTasks}>
+                            Back to task queue
+                          </Button>
+                        </div>
+                      </section>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <h2 className="text-sm font-semibold">Task detail</h2>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        This route is the browser-side equivalent of <span className="font-mono">nilus task context</span>. Keep queue triage on the task index, then use this screen for continuity, linked docs, and safe task actions.
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={goToTasks}>
+                          Back to task queue
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={goToChat} disabled={!repoRoot}>
+                          Open chat
+                        </Button>
+                      </div>
+                    </section>
+
+                    <BackendSyncPanel
+                      serverConfig={serverConfig}
+                      gitStatus={gitStatus}
+                      onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -2171,6 +2245,7 @@ function TaskWorkflowPanel(props: {
   isCompleting: boolean;
   onComplete: () => void;
   onOpenDocument: (documentPath: string) => void;
+  onOpenTask: (taskNumber: number) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -2243,14 +2318,19 @@ function TaskWorkflowPanel(props: {
               <ContextListCard title="Related open tasks">
                 {(props.context?.relatedOpenTasks.length ?? 0) > 0 ? (
                   props.context?.relatedOpenTasks.map((task) => (
-                    <div key={`open-${task.number}`} className="rounded-xl border border-border bg-card/50 px-3 py-2">
+                    <button
+                      key={`open-${task.number}`}
+                      type="button"
+                      className="block w-full rounded-xl border border-border bg-card/50 px-3 py-2 text-left hover:bg-accent/30"
+                      onClick={() => props.onOpenTask(task.number)}
+                    >
                       <p className="text-sm font-medium">{task.description}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         #{task.number}
                         {task.thread ? ` · thread:${task.thread}` : ""}
                         {task.project ? ` · +${task.project}` : ""}
                       </p>
-                    </div>
+                    </button>
                   ))
                 ) : (
                   <EmptyContext label="No related open tasks found." />

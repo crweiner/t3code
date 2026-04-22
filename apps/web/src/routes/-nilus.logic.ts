@@ -5,13 +5,27 @@ import type { Project, SidebarThreadSummary } from "../types";
 export type NilusPage =
   | "overview"
   | "tasks"
+  | "taskDetail"
   | "memory"
   | "evidence"
   | "changes"
   | "chat"
   | "settings";
 
+export function resolveTaskNumberFromPath(pathname: string): number | null {
+  const match = pathname.match(/^\/nilus\/tasks\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+
+  const taskNumber = Number.parseInt(match[1] ?? "", 10);
+  return Number.isSafeInteger(taskNumber) && taskNumber > 0 ? taskNumber : null;
+}
+
 export function resolveNilusPageFromPath(pathname: string): NilusPage {
+  if (resolveTaskNumberFromPath(pathname) !== null) {
+    return "taskDetail";
+  }
   if (pathname.startsWith("/nilus/tasks")) {
     return "tasks";
   }

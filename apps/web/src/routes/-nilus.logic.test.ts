@@ -6,6 +6,7 @@ import {
   resolveLatestNilusChatThread,
   resolveNilusPageFromPath,
   resolveProjectTitleFromRepoRoot,
+  resolveTaskNumberFromPath,
 } from "./-nilus.logic";
 import type { Project, SidebarThreadSummary } from "../types";
 
@@ -13,11 +14,21 @@ describe("resolveNilusPageFromPath", () => {
   it("keeps the workspace-first pages distinct", () => {
     expect(resolveNilusPageFromPath("/nilus")).toBe("overview");
     expect(resolveNilusPageFromPath("/nilus/tasks")).toBe("tasks");
+    expect(resolveNilusPageFromPath("/nilus/tasks/6")).toBe("taskDetail");
     expect(resolveNilusPageFromPath("/nilus/memory")).toBe("memory");
     expect(resolveNilusPageFromPath("/nilus/evidence")).toBe("evidence");
     expect(resolveNilusPageFromPath("/nilus/changes")).toBe("changes");
     expect(resolveNilusPageFromPath("/nilus/chat")).toBe("chat");
     expect(resolveNilusPageFromPath("/nilus/settings")).toBe("settings");
+  });
+});
+
+describe("resolveTaskNumberFromPath", () => {
+  it("extracts task numbers from the dedicated task detail route", () => {
+    expect(resolveTaskNumberFromPath("/nilus/tasks/6")).toBe(6);
+    expect(resolveTaskNumberFromPath("/nilus/tasks/42/")).toBe(42);
+    expect(resolveTaskNumberFromPath("/nilus/tasks")).toBeNull();
+    expect(resolveTaskNumberFromPath("/nilus/tasks/not-a-number")).toBeNull();
   });
 });
 
