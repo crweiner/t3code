@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 
 import {
+  buildNilusTaskChatStorageKey,
+  buildNilusTaskStartPrompt,
+  buildNilusTaskThreadTitle,
   findProjectForRepoRoot,
   resolveLatestNilusChatThread,
   resolveNilusPageFromPath,
@@ -35,6 +38,38 @@ describe("findProjectForRepoRoot", () => {
 
     expect(findProjectForRepoRoot(projects, "/repo/nilus")?.id).toBe("project-1");
     expect(findProjectForRepoRoot(projects, "/repo/other")).toBeNull();
+  });
+});
+
+describe("Nilus task chat helpers", () => {
+  it("builds a stable storage key per repo and task number", () => {
+    expect(buildNilusTaskChatStorageKey("/repo/nilus", 8)).toBe("/repo/nilus::8");
+  });
+
+  it("builds a task-specific thread title", () => {
+    const title = buildNilusTaskThreadTitle({
+      number: 8,
+      description: "Add a Start Task action to /nilus/tasks for linked task kickoff chats",
+    });
+
+    expect(title.startsWith("Task #8: Add a Start Task action to /nilus/tasks")).toBe(true);
+    expect(title.endsWith("...")).toBe(true);
+  });
+
+  it("builds a kickoff prompt from task metadata", () => {
+    const prompt = buildNilusTaskStartPrompt({
+      number: 8,
+      description: "Launch a linked task chat",
+      priority: "B",
+      project: "NilusBrowser",
+      owner: "nilus",
+      thread: "nilus-browser",
+      after: null,
+      waiting: null,
+    });
+
+    expect(prompt).toContain("Start working on Nilus task #8.");
+    expect(prompt).toContain("- thread: nilus-browser");
   });
 });
 

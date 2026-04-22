@@ -1,4 +1,4 @@
-import type { ProjectId } from "@t3tools/contracts";
+import type { NilusTaskRecord, ProjectId } from "@t3tools/contracts";
 
 import type { Project, SidebarThreadSummary } from "../types";
 
@@ -31,6 +31,48 @@ export function resolveNilusPageFromPath(pathname: string): NilusPage {
     return "settings";
   }
   return "overview";
+}
+
+export function buildNilusTaskChatStorageKey(repoRoot: string, taskNumber: number): string {
+  return `${repoRoot}::${taskNumber}`;
+}
+
+export function buildNilusTaskThreadTitle(
+  task: Pick<NilusTaskRecord, "number" | "description">,
+): string {
+  const trimmedDescription = task.description.trim();
+  const compactDescription =
+    trimmedDescription.length > 68
+      ? `${trimmedDescription.slice(0, 65).trimEnd()}...`
+      : trimmedDescription;
+
+  return `Task #${task.number}: ${compactDescription}`;
+}
+
+export function buildNilusTaskStartPrompt(
+  task: Pick<
+    NilusTaskRecord,
+    "number" | "description" | "priority" | "project" | "owner" | "thread" | "after" | "waiting"
+  >,
+): string {
+  const metadataLines = [
+    task.priority ? `- priority: ${task.priority}` : null,
+    task.project ? `- project: ${task.project}` : null,
+    task.owner ? `- owner: ${task.owner}` : null,
+    task.thread ? `- thread: ${task.thread}` : null,
+    task.after ? `- after: ${task.after}` : null,
+    task.waiting ? `- waiting: ${task.waiting}` : null,
+  ].filter((line): line is string => line !== null);
+
+  return [
+    `Start working on Nilus task #${task.number}.`,
+    "",
+    "Task:",
+    task.description,
+    ...(metadataLines.length > 0 ? ["", "Metadata:", ...metadataLines] : []),
+    "",
+    "Inspect the current workspace state first, then implement the task in this repo.",
+  ].join("\n");
 }
 
 export function findProjectForRepoRoot(

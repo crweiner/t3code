@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  type ModelSelection,
   PROVIDER_DISPLAY_NAMES,
   type GitStatusResult,
   type NilusIssueSection,
@@ -23,6 +24,7 @@ import {
   type NilusPartnerSection,
   type NilusTaskRecord,
   type ServerProvider,
+  type ThreadId,
 } from "@t3tools/contracts";
 
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
@@ -55,12 +57,16 @@ import {
   nilusUpdateIssueMutationOptions,
   nilusUpdatePartnerMutationOptions,
 } from "../lib/nilusReactQuery";
-import { newCommandId, newProjectId, randomUUID } from "../lib/utils";
+import { newCommandId, newMessageId, newProjectId, newThreadId, randomUUID } from "../lib/utils";
 import { useServerConfig } from "../rpc/serverState";
 import { useStore } from "../store";
 import { isElectron } from "../env";
 import { readNativeApi } from "../nativeApi";
+import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "../types";
 import {
+  buildNilusTaskChatStorageKey,
+  buildNilusTaskStartPrompt,
+  buildNilusTaskThreadTitle,
   findProjectForRepoRoot,
   resolveLatestNilusChatThread,
   resolveNilusPageFromPath,
@@ -68,7 +74,9 @@ import {
 } from "./-nilus.logic";
 
 const NILUS_REPO_STORAGE_KEY = "t3code:nilus:repo-root:v1";
+const NILUS_TASK_CHAT_THREADS_STORAGE_KEY = "t3code:nilus:task-chat-threads:v1";
 const NilusRepoRootSchema = Schema.NullOr(Schema.String);
+const NilusTaskChatThreadsSchema = Schema.Record(Schema.String, Schema.String);
 const MEMORY_VIEWS: readonly NilusDomain[] = ["talk", "partners", "issues", "knowledge"];
 
 function NilusRouteView() {
@@ -86,13 +94,23 @@ function NilusRouteView() {
   const appSettings = useSettings();
   const defaultThreadEnvMode = appSettings.defaultThreadEnvMode;
   const { handleNewThread } = useHandleNewThread();
+  const stickyModelSelectionByProvider = useComposerDraftStore(
+    (store) => store.stickyModelSelectionByProvider,
+  );
+  const stickyActiveProvider = useComposerDraftStore((store) => store.stickyActiveProvider);
+  const draftThreadsByThreadId = useComposerDraftStore((store) => store.draftThreadsByThreadId);
   const [repoRoot, setRepoRoot] = useLocalStorage<string | null, string | null>(
     NILUS_REPO_STORAGE_KEY,
     null,
     NilusRepoRootSchema,
   );
+  const [taskChatThreadIdsByTaskKey, setTaskChatThreadIdsByTaskKey] = useLocalStorage<
+    Record<string, string>,
+    Record<string, string>
+  >(NILUS_TASK_CHAT_THREADS_STORAGE_KEY, {}, NilusTaskChatThreadsSchema);
   const [draftRepoRoot, setDraftRepoRoot] = useState(repoRoot ?? "");
   const [isLaunchingChat, setIsLaunchingChat] = useState(false);
+  const [startingTaskNumber, setStartingTaskNumber] = useState<number | null>(null);
   const [memoryView, setMemoryView] = useState<NilusDomain>("talk");
   const [selectedTaskNumber, setSelectedTaskNumber] = useState<number | null>(null);
   const [selectedDocumentPath, setSelectedDocumentPath] = useState<string | null>(null);
@@ -617,6 +635,24 @@ function NilusRouteView() {
 
   const selectedTask =
     (tasksQuery.data ?? []).find((task) => task.number === selectedTaskNumber) ?? null;
+  const selectedTaskChatKey =
+    repoRoot && selectedTask ? buildNilusTaskChatStorageKey(repoRoot, selectedTask.number) : null;
+  const selectedTaskLinkedThreadId =
+    selectedTaskChatKey
+      ? ((taskChatThreadIdsByTaskKey[selectedTaskChatKey] as ThreadId | undefined) ?? null)
+      : null;
+  const selectedTaskLinkedDraftThread =
+    selectedTaskLinkedThreadId ? (draftThreadsByThreadId[selectedTaskLinkedThreadId] ?? null) : null;
+  const selectedTaskLinkedServerThread =
+    selectedTaskLinkedThreadId ? (sidebarThreadsById[selectedTaskLinkedThreadId] ?? null) : null;
+  const selectedTaskLinkedThread =
+    selectedTaskLinkedDraftThread ??
+    (selectedTaskLinkedServerThread && selectedTaskLinkedServerThread.archivedAt === null
+      ? selectedTaskLinkedServerThread
+      : null);
+  const selectedTaskChatTitle = selectedTaskLinkedServerThread?.title ?? null;
+  const selectedTaskHasLinkedChat =
+    selectedTaskLinkedThreadId !== null && selectedTaskLinkedThread !== null;
   const saveState = useMemo(
     () =>
       resolveNilusSaveState({
@@ -634,36 +670,57 @@ function NilusRouteView() {
     }
   };
 
+  const resolveNilusTaskModelSelection = (): ModelSelection => {
+    const stickySelection =
+      stickyActiveProvider !== null ? stickyModelSelectionByProvider[stickyActiveProvider] : null;
+    if (stickySelection) {
+      return stickySelection;
+    }
+    if (nilusProject?.defaultModelSelection) {
+      return nilusProject.defaultModelSelection;
+    }
+    return {
+      provider: "codex",
+      model: DEFAULT_MODEL_BY_PROVIDER.codex,
+    };
+  };
+
+  const ensureNilusProjectId = async (normalizedRepoRoot: string) => {
+    const api = readNativeApi();
+    if (!api) {
+      throw new Error("Native API is not available.");
+    }
+
+    let projectId = nilusProject?.id ?? null;
+    if (!projectId) {
+      projectId = newProjectId();
+      const createdAt = new Date().toISOString();
+      await api.orchestration.dispatchCommand({
+        type: "project.create",
+        commandId: newCommandId(),
+        projectId,
+        title: resolveProjectTitleFromRepoRoot(normalizedRepoRoot),
+        workspaceRoot: normalizedRepoRoot,
+        defaultModelSelection: {
+          provider: "codex",
+          model: DEFAULT_MODEL_BY_PROVIDER.codex,
+        },
+        createdAt,
+      });
+    }
+
+    return { api, projectId };
+  };
+
   const handleOpenNilusChat = async () => {
     const normalizedRepoRoot = repoRoot?.trim() ?? "";
     if (normalizedRepoRoot.length === 0 || isLaunchingChat) {
       return;
     }
 
-    const api = readNativeApi();
-    if (!api) {
-      return;
-    }
-
     setIsLaunchingChat(true);
     try {
-      let projectId = nilusProject?.id ?? null;
-      if (!projectId) {
-        projectId = newProjectId();
-        const createdAt = new Date().toISOString();
-        await api.orchestration.dispatchCommand({
-          type: "project.create",
-          commandId: newCommandId(),
-          projectId,
-          title: resolveProjectTitleFromRepoRoot(normalizedRepoRoot),
-          workspaceRoot: normalizedRepoRoot,
-          defaultModelSelection: {
-            provider: "codex",
-            model: DEFAULT_MODEL_BY_PROVIDER.codex,
-          },
-          createdAt,
-        });
-      }
+      const { projectId } = await ensureNilusProjectId(normalizedRepoRoot);
 
       const storedDraftThread = useComposerDraftStore.getState().getDraftThreadByProjectId(projectId);
       if (storedDraftThread) {
@@ -698,6 +755,97 @@ function NilusRouteView() {
       });
     } finally {
       setIsLaunchingChat(false);
+    }
+  };
+
+  const handleStartTaskChat = async () => {
+    if (!selectedTask || !repoRoot || startingTaskNumber !== null) {
+      return;
+    }
+
+    const normalizedRepoRoot = repoRoot.trim();
+    if (normalizedRepoRoot.length === 0) {
+      return;
+    }
+
+    if (selectedTaskLinkedThreadId && selectedTaskLinkedThread) {
+      await navigate({
+        to: "/$threadId",
+        params: { threadId: selectedTaskLinkedThreadId },
+      });
+      return;
+    }
+
+    if (selectedTaskChatKey && selectedTaskLinkedThreadId && !selectedTaskLinkedThread) {
+      setTaskChatThreadIdsByTaskKey((existing) => {
+        const next = { ...existing };
+        delete next[selectedTaskChatKey];
+        return next;
+      });
+    }
+
+    setStartingTaskNumber(selectedTask.number);
+    try {
+      const { api, projectId } = await ensureNilusProjectId(normalizedRepoRoot);
+      const threadId = newThreadId();
+      const messageId = newMessageId();
+      const createdAt = new Date().toISOString();
+      const modelSelection = resolveNilusTaskModelSelection();
+      const title = buildNilusTaskThreadTitle(selectedTask);
+
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId,
+        message: {
+          messageId,
+          role: "user",
+          text: buildNilusTaskStartPrompt(selectedTask),
+          attachments: [],
+        },
+        modelSelection,
+        titleSeed: title,
+        runtimeMode: DEFAULT_RUNTIME_MODE,
+        interactionMode: DEFAULT_INTERACTION_MODE,
+        bootstrap: {
+          createThread: {
+            projectId,
+            title,
+            modelSelection,
+            runtimeMode: DEFAULT_RUNTIME_MODE,
+            interactionMode: DEFAULT_INTERACTION_MODE,
+            branch: null,
+            worktreePath: null,
+            createdAt,
+          },
+        },
+        createdAt,
+      });
+
+      const taskChatKey = buildNilusTaskChatStorageKey(normalizedRepoRoot, selectedTask.number);
+      setTaskChatThreadIdsByTaskKey((existing) => ({
+        ...existing,
+        [taskChatKey]: threadId,
+      }));
+
+      toastManager.add({
+        type: "success",
+        title: `Started task #${selectedTask.number}`,
+        description: "Opened a linked Nilus chat thread for this task.",
+      });
+
+      await navigate({
+        to: "/$threadId",
+        params: { threadId },
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to start task chat",
+        description: error instanceof Error ? error.message : "Unknown Nilus chat error.",
+      });
+    } finally {
+      setStartingTaskNumber(null);
     }
   };
 
@@ -1444,6 +1592,19 @@ function NilusRouteView() {
                             taskCompletionPreviewQuery.isFetching
                           }
                           isCompleting={completeTaskMutation.isPending}
+                          isStartingTask={startingTaskNumber === selectedTask.number}
+                          hasLinkedTaskChat={selectedTaskHasLinkedChat}
+                          linkedTaskChatTitle={selectedTaskChatTitle}
+                          onStartTask={() => void handleStartTaskChat()}
+                          onOpenTaskChat={
+                            selectedTaskLinkedThreadId
+                              ? () =>
+                                  void navigate({
+                                    to: "/$threadId",
+                                    params: { threadId: selectedTaskLinkedThreadId },
+                                  })
+                              : null
+                          }
                           onComplete={() => void handleCompleteTask()}
                           onOpenDocument={(documentPath) => {
                             const domain = taskContextQuery.data?.relatedDocuments.find(
@@ -2169,6 +2330,11 @@ function TaskWorkflowPanel(props: {
   isLoadingContext: boolean;
   isLoadingPreview: boolean;
   isCompleting: boolean;
+  isStartingTask: boolean;
+  hasLinkedTaskChat: boolean;
+  linkedTaskChatTitle: string | null;
+  onStartTask: () => void;
+  onOpenTaskChat: (() => void) | null;
   onComplete: () => void;
   onOpenDocument: (documentPath: string) => void;
 }) {
@@ -2182,10 +2348,25 @@ function TaskWorkflowPanel(props: {
             </p>
             <h2 className="mt-2 text-lg font-semibold leading-7">{props.task.description}</h2>
           </div>
-          <Button size="sm" onClick={props.onComplete} disabled={props.isCompleting}>
-            <CheckCircle2Icon className="size-4" />
-            {props.isCompleting ? "Completing..." : "Complete task"}
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={props.onStartTask}
+              disabled={props.isStartingTask}
+            >
+              <SquarePenIcon className="size-4" />
+              {props.isStartingTask
+                ? "Starting..."
+                : props.hasLinkedTaskChat
+                  ? "Resume task chat"
+                  : "Start task"}
+            </Button>
+            <Button size="sm" onClick={props.onComplete} disabled={props.isCompleting}>
+              <CheckCircle2Icon className="size-4" />
+              {props.isCompleting ? "Completing..." : "Complete task"}
+            </Button>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
@@ -2197,6 +2378,24 @@ function TaskWorkflowPanel(props: {
           {props.task.after ? <MetadataPill label={`after:${props.task.after}`} /> : null}
           {props.task.recur ? <MetadataPill label={`recur:${props.task.recur}`} /> : null}
           {props.task.waiting ? <MetadataPill label={`waiting:${props.task.waiting}`} /> : null}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-border bg-card/50 px-3 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Task chat
+          </p>
+          <p className="mt-2 text-sm text-foreground">
+            {props.hasLinkedTaskChat
+              ? props.linkedTaskChatTitle ?? "Linked Nilus task chat is ready."
+              : "Start this task in a linked Nilus chat thread and jump straight into the active session."}
+          </p>
+          {props.onOpenTaskChat ? (
+            <div className="mt-3">
+              <Button size="sm" variant="ghost" onClick={props.onOpenTaskChat}>
+                Open linked chat
+              </Button>
+            </div>
+          ) : null}
         </div>
       </section>
 
