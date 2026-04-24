@@ -86,7 +86,7 @@ import {
   NilusTaskRecord,
   NilusTalkNoteDraftInput,
   NilusTalkNotePreview,
-} from "./nilus";
+} from "./nilus.ts";
 import {
   TerminalClearInput,
   TerminalCloseInput,

@@ -1,6 +1,7 @@
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  BookOpenIcon,
   ChevronRightIcon,
   CloudIcon,
   GitPullRequestIcon,

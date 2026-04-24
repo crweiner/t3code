@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas";
+import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const NilusDomain = Schema.Literals(["talk", "partners", "issues", "knowledge"]);
 export type NilusDomain = typeof NilusDomain.Type;
@@ -204,6 +204,9 @@ export const NilusMemoryMutationPreview = Schema.Struct({
   commitSafety: NilusCommitSafety,
 });
 export type NilusMemoryMutationPreview = typeof NilusMemoryMutationPreview.Type;
+
+export const NilusMemoryPreview = NilusMemoryMutationPreview;
+export type NilusMemoryPreview = typeof NilusMemoryPreview.Type;
 
 export const NilusMemoryMutationResult = NilusMemoryMutationPreview;
 export type NilusMemoryMutationResult = typeof NilusMemoryMutationResult.Type;

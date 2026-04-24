@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { NoActiveThreadState } from "../components/NoActiveThreadState";
 
-function ChatIndexRouteView() {
+export function ChatIndexRouteView() {
   return <NoActiveThreadState />;
 }
 
