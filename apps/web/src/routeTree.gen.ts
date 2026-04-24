@@ -24,7 +24,8 @@ import { Route as NilusEvidenceRouteImport } from './routes/nilus.evidence'
 import { Route as NilusChatRouteImport } from './routes/nilus.chat'
 import { Route as NilusChangesRouteImport } from './routes/nilus.changes'
 import { Route as ChatLandingRouteImport } from './routes/chat.landing'
-import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
+import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
+import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -100,9 +101,9 @@ const ChatLandingRoute = ChatLandingRouteImport.update({
   path: '/chat/landing',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
+const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
+  id: '/draft/$draftId',
+  path: '/draft/$draftId',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatEnvironmentIdThreadIdRoute =
@@ -115,8 +116,8 @@ const ChatEnvironmentIdThreadIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/nilus': typeof NilusRouteWithChildren
+  '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/$threadId': typeof ChatThreadIdRoute
   '/chat/landing': typeof ChatLandingRoute
   '/nilus/changes': typeof NilusChangesRoute
   '/nilus/chat': typeof NilusChatRoute
@@ -132,8 +133,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/nilus': typeof NilusRouteWithChildren
+  '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/$threadId': typeof ChatThreadIdRoute
   '/chat/landing': typeof ChatLandingRoute
   '/nilus/changes': typeof NilusChangesRoute
   '/nilus/chat': typeof NilusChatRoute
@@ -152,8 +153,8 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
   '/nilus': typeof NilusRouteWithChildren
+  '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/_chat/$threadId': typeof ChatThreadIdRoute
   '/chat/landing': typeof ChatLandingRoute
   '/nilus/changes': typeof NilusChangesRoute
   '/nilus/chat': typeof NilusChatRoute
@@ -175,7 +176,6 @@ export interface FileRouteTypes {
     | '/nilus'
     | '/pair'
     | '/settings'
-    | '/$threadId'
     | '/chat/landing'
     | '/nilus/changes'
     | '/nilus/chat'
@@ -193,7 +193,6 @@ export interface FileRouteTypes {
     | '/nilus'
     | '/pair'
     | '/settings'
-    | '/$threadId'
     | '/chat/landing'
     | '/nilus/changes'
     | '/nilus/chat'
@@ -213,7 +212,6 @@ export interface FileRouteTypes {
     | '/nilus'
     | '/pair'
     | '/settings'
-    | '/_chat/$threadId'
     | '/chat/landing'
     | '/nilus/changes'
     | '/nilus/chat'
@@ -232,6 +230,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   NilusRoute: typeof NilusRouteWithChildren
+  PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   ChatLandingRoute: typeof ChatLandingRoute
 }
@@ -343,11 +342,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatLandingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_chat/$threadId': {
-      id: '/_chat/$threadId'
-      path: '/$threadId'
-      fullPath: '/$threadId'
-      preLoaderRoute: typeof ChatThreadIdRouteImport
+    '/_chat/draft/$draftId': {
+      id: '/_chat/draft/$draftId'
+      path: '/draft/$draftId'
+      fullPath: '/draft/$draftId'
+      preLoaderRoute: typeof ChatDraftDraftIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/$environmentId/$threadId': {
+      id: '/_chat/$environmentId/$threadId'
+      path: '/$environmentId/$threadId'
+      fullPath: '/$environmentId/$threadId'
+      preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
   }
@@ -406,6 +412,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   NilusRoute: NilusRouteWithChildren,
+  PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   ChatLandingRoute: ChatLandingRoute,
 }

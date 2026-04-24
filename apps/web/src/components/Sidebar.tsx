@@ -2,7 +2,6 @@ import {
   ArchiveIcon,
   ArrowUpDownIcon,
   BookOpenIcon,
-  CheckCircle2Icon,
   ChevronRightIcon,
   CloudIcon,
   GitPullRequestIcon,
@@ -2222,125 +2221,6 @@ function T3Wordmark() {
   );
 }
 
-function NilusSidebarNav({
-  pathname,
-  onNavigate,
-}: {
-  pathname: string;
-  onNavigate: (
-    to:
-      | "/nilus"
-      | "/nilus/tasks"
-      | "/nilus/memory"
-      | "/nilus/evidence"
-      | "/nilus/changes"
-      | "/nilus/chat"
-      | "/nilus/settings",
-  ) => void;
-}) {
-  const items = [
-    {
-      label: "Home",
-      description: "Startup and orientation",
-      to: "/nilus" as const,
-      icon: BookOpenIcon,
-      active: pathname === "/nilus",
-    },
-    {
-      label: "Tasks",
-      description: "Queue and continuity work",
-      to: "/nilus/tasks" as const,
-      icon: CheckCircle2Icon,
-      active: pathname.startsWith("/nilus/tasks"),
-    },
-    {
-      label: "Memory",
-      description: "Talk, partners, issues, knowledge",
-      to: "/nilus/memory" as const,
-      icon: FolderIcon,
-      active: pathname.startsWith("/nilus/memory"),
-    },
-    {
-      label: "Evidence",
-      description: "Provider and source checks",
-      to: "/nilus/evidence" as const,
-      icon: TriangleAlertIcon,
-      active: pathname.startsWith("/nilus/evidence"),
-    },
-    {
-      label: "Changes",
-      description: "Save, sync, and publish",
-      to: "/nilus/changes" as const,
-      icon: GitPullRequestIcon,
-      active: pathname.startsWith("/nilus/changes"),
-    },
-    {
-      label: "Chat",
-      description: "Talk to Nilus in-browser",
-      to: "/nilus/chat" as const,
-      icon: SquarePenIcon,
-      active: pathname.startsWith("/nilus/chat"),
-    },
-    {
-      label: "Settings",
-      description: "Backend, sync, and runtime",
-      to: "/nilus/settings" as const,
-      icon: SettingsIcon,
-      active: pathname.startsWith("/nilus/settings"),
-    },
-  ];
-
-  return (
-    <>
-      <SidebarHeader className="gap-0 border-sidebar-border/70 border-b px-3 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-xl border border-sidebar-border/70 bg-sidebar-accent/60">
-            <BookOpenIcon className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">Nilus</p>
-            <p className="truncate text-[11px] text-muted-foreground">Workspace-first prototype</p>
-          </div>
-        </div>
-      </SidebarHeader>
-
-      <SidebarContent className="gap-0">
-        <SidebarGroup className="px-2 py-3">
-          <div className="mb-2 px-2 text-[10px] font-medium tracking-wider text-muted-foreground/60 uppercase">
-            Workspace
-          </div>
-          <SidebarMenu>
-            {items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <SidebarMenuItem key={item.to}>
-                  <SidebarMenuButton
-                    size="sm"
-                    className={`h-auto items-start gap-2 px-2 py-2 ${
-                      item.active
-                        ? "bg-accent text-foreground"
-                        : "text-muted-foreground/80 hover:bg-accent hover:text-foreground"
-                    }`}
-                    onClick={() => onNavigate(item.to)}
-                  >
-                    <Icon className="mt-0.5 size-3.5 shrink-0" />
-                    <span className="min-w-0">
-                      <span className="block text-xs font-medium">{item.label}</span>
-                      <span className="block truncate text-[11px] text-muted-foreground">
-                        {item.description}
-                      </span>
-                    </span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
-      </SidebarContent>
-    </>
-  );
-}
-
 type SortableProjectHandleProps = Pick<
   ReturnType<typeof useSortable>,
   "attributes" | "listeners" | "setActivatorNodeRef"
@@ -2839,9 +2719,13 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname.startsWith("/settings");
-  const isOnNilus = pathname.startsWith("/nilus");
-  const isOnChat = pathname === "/chat" || pathname === "/chat/landing" || (!isOnSettings && !isOnNilus);
-  const appSettings = useSettings();
+  const sidebarThreadSortOrder = useSettings((s) => s.sidebarThreadSortOrder);
+  const sidebarProjectSortOrder = useSettings((s) => s.sidebarProjectSortOrder);
+  const sidebarProjectGroupingMode = useSettings((s) => s.sidebarProjectGroupingMode);
+  const projectGroupingSettings = useSettings((settings) => ({
+    sidebarProjectGroupingMode: settings.sidebarProjectGroupingMode,
+    sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
+  }));
   const { updateSettings } = useUpdateSettings();
   const { handleNewThread } = useNewThreadHandler();
   const { archiveThread, deleteThread } = useThreadActions();
@@ -3456,46 +3340,6 @@ export default function Sidebar() {
 
       {isOnSettings ? (
         <SettingsSidebarNav pathname={pathname} />
-      ) : isOnNilus ? (
-        <>
-          <NilusSidebarNav
-            pathname={pathname}
-            onNavigate={(to) => {
-              void navigate({ to });
-            }}
-          />
-
-          <SidebarSeparator />
-          <SidebarFooter className="p-2">
-            <SidebarUpdatePill />
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="sm"
-                  className={`gap-2 px-2 py-1.5 ${
-                    isOnChat
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                  }`}
-                  onClick={() => void navigate({ to: "/chat/landing" })}
-                >
-                  <SquarePenIcon className="size-3.5" />
-                  <span className="text-xs">Chat</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                  onClick={() => void navigate({ to: "/settings" })}
-                >
-                  <SettingsIcon className="size-3.5" />
-                  <span className="text-xs">Settings</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        </>
       ) : (
         <>
           <SidebarProjectsContent
@@ -3536,45 +3380,7 @@ export default function Sidebar() {
           />
 
           <SidebarSeparator />
-          <SidebarFooter className="p-2">
-            <SidebarUpdatePill />
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="sm"
-                  className={`gap-2 px-2 py-1.5 ${
-                    isOnChat
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                  }`}
-                  onClick={() => void navigate({ to: "/chat/landing" })}
-                >
-                  <SquarePenIcon className="size-3.5" />
-                  <span className="text-xs">Chat</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                  onClick={() => void navigate({ to: "/nilus" })}
-                >
-                  <BookOpenIcon className="size-3.5" />
-                  <span className="text-xs">Nilus</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                  onClick={() => void navigate({ to: "/settings" })}
-                >
-                  <SettingsIcon className="size-3.5" />
-                  <span className="text-xs">Settings</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
+          <SidebarChromeFooter />
         </>
       )}
     </>

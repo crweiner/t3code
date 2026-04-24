@@ -15,7 +15,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
-  type ModelSelection,
   PROVIDER_DISPLAY_NAMES,
   type GitStatusResult,
   type NilusIssueSection,
@@ -24,7 +23,6 @@ import {
   type NilusPartnerSection,
   type NilusTaskRecord,
   type ServerProvider,
-  type ThreadId,
 } from "@t3tools/contracts";
 import {
   parseScopedThreadKey,
@@ -36,10 +34,11 @@ import {
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Button } from "../components/ui/button";
 import { toastManager } from "../components/ui/toast";
-import { useComposerDraftStore } from "../composerDraftStore";
+import { usePrimaryEnvironmentId } from "../environments/primary";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { useSettings } from "../hooks/useSettings";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useSettings } from "../hooks/useSettings";
+import { readEnvironmentApi } from "../environmentApi";
 import { gitRunStackedActionMutationOptions } from "../lib/gitReactQuery";
 import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
@@ -64,11 +63,12 @@ import {
   nilusUpdatePartnerMutationOptions,
 } from "../lib/nilusReactQuery";
 import { newCommandId, newMessageId, newProjectId, newThreadId, randomUUID } from "../lib/utils";
+import { readLocalApi } from "../localApi";
 import { useServerConfig } from "../rpc/serverState";
 import { useStore } from "../store";
-import { isElectron } from "../env";
-import { readNativeApi } from "../nativeApi";
+import { buildThreadRouteParams } from "../threadRoutes";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "../types";
+import { isElectron } from "../env";
 import {
   buildNilusTaskChatStorageKey,
   buildNilusTaskStartPrompt,
@@ -77,6 +77,7 @@ import {
   resolveLatestNilusChatThread,
   resolveNilusPageFromPath,
   resolveProjectTitleFromRepoRoot,
+  type NilusPage,
 } from "./-nilus.logic";
 
 const NILUS_REPO_STORAGE_KEY = "t3code:nilus:repo-root:v1";
@@ -90,21 +91,14 @@ function NilusRouteView() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const serverConfig = useServerConfig();
-  const { projects, sidebarThreadsById, threadIdsByProjectId } = useStore(
-    useShallow((store) => ({
-      projects: store.projects,
-      sidebarThreadsById: store.sidebarThreadsById,
-      threadIdsByProjectId: store.threadIdsByProjectId,
-    })),
-  );
-  const appSettings = useSettings();
-  const defaultThreadEnvMode = appSettings.defaultThreadEnvMode;
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const defaultThreadEnvMode = useSettings((settings) => settings.defaultThreadEnvMode);
   const { handleNewThread } = useHandleNewThread();
-  const stickyModelSelectionByProvider = useComposerDraftStore(
-    (store) => store.stickyModelSelectionByProvider,
+  const primaryEnvironmentState = useStore(
+    useShallow((store) =>
+      primaryEnvironmentId ? (store.environmentStateById[primaryEnvironmentId] ?? null) : null,
+    ),
   );
-  const stickyActiveProvider = useComposerDraftStore((store) => store.stickyActiveProvider);
-  const draftThreadsByThreadId = useComposerDraftStore((store) => store.draftThreadsByThreadId);
   const [repoRoot, setRepoRoot] = useLocalStorage<string | null, string | null>(
     NILUS_REPO_STORAGE_KEY,
     null,
@@ -179,19 +173,45 @@ function NilusRouteView() {
   const deferredIssueRootCause = useDeferredValue(issueRootCause);
   const deferredIssueResolution = useDeferredValue(issueResolution);
   const deferredIssueUpdateEntry = useDeferredValue(issueUpdateEntry);
-  const gitStatus = useGitStatus(repoRoot);
   const page = resolveNilusPageFromPath(pathname);
+  const projects = useMemo(() => {
+    if (!primaryEnvironmentState) {
+      return [];
+    }
+
+    return primaryEnvironmentState.projectIds.flatMap((projectId) => {
+      const project = primaryEnvironmentState.projectById[projectId];
+      return project ? [project] : [];
+    });
+  }, [primaryEnvironmentState]);
   const nilusProject = useMemo(() => findProjectForRepoRoot(projects, repoRoot), [projects, repoRoot]);
-  const latestNilusChatThread = useMemo(
+  const nilusProjectRef = useMemo(
     () =>
-      nilusProject
-        ? resolveLatestNilusChatThread({
-            projectId: nilusProject.id,
-            threadIdsByProjectId,
-            sidebarThreadsById,
-          })
-        : null,
-    [nilusProject, sidebarThreadsById, threadIdsByProjectId],
+      nilusProject ? scopeProjectRef(nilusProject.environmentId, nilusProject.id) : null,
+    [nilusProject],
+  );
+  const gitStatusTarget = useMemo(
+    () => ({
+      environmentId: nilusProjectRef?.environmentId ?? primaryEnvironmentId ?? null,
+      cwd: repoRoot,
+    }),
+    [nilusProjectRef?.environmentId, primaryEnvironmentId, repoRoot],
+  );
+  const gitStatus = useGitStatus(gitStatusTarget);
+  const nilusProjectThreads = useMemo(() => {
+    if (!primaryEnvironmentState || !nilusProject) {
+      return [];
+    }
+
+    const threadIds = primaryEnvironmentState.threadIdsByProjectId[nilusProject.id] ?? [];
+    return threadIds.flatMap((threadId) => {
+      const thread = primaryEnvironmentState.sidebarThreadSummaryById[threadId];
+      return thread && thread.archivedAt === null ? [thread] : [];
+    });
+  }, [nilusProject, primaryEnvironmentState]);
+  const latestNilusChatThread = useMemo(
+    () => resolveLatestNilusChatThread(nilusProjectThreads),
+    [nilusProjectThreads],
   );
 
   const startupQuery = useQuery(
@@ -640,57 +660,34 @@ function NilusRouteView() {
     void navigate({ to: "/nilus/settings" });
   };
 
-  const goToOverview = () => {
-    void navigate({ to: "/nilus" });
-  };
-
-  const goToTasks = () => {
-    void navigate({ to: "/nilus/tasks" });
-  };
-
-  const goToMemory = (domain?: NilusDomain) => {
-    if (domain) {
-      setMemoryView(domain);
-    }
-    void navigate({ to: "/nilus/memory" });
-  };
-
-  const goToEvidence = () => {
-    void navigate({ to: "/nilus/evidence" });
-  };
-
-  const goToChanges = () => {
-    void navigate({ to: "/nilus/changes" });
-  };
-
-  const goToChat = () => {
-    void navigate({ to: "/nilus/chat" });
-  };
-
-  const goToSettings = () => {
-    void navigate({ to: "/nilus/settings" });
-  };
-
   const selectedTask =
     (tasksQuery.data ?? []).find((task) => task.number === selectedTaskNumber) ?? null;
   const selectedTaskChatKey =
     repoRoot && selectedTask ? buildNilusTaskChatStorageKey(repoRoot, selectedTask.number) : null;
-  const selectedTaskLinkedThreadId =
-    selectedTaskChatKey
-      ? ((taskChatThreadIdsByTaskKey[selectedTaskChatKey] as ThreadId | undefined) ?? null)
-      : null;
-  const selectedTaskLinkedDraftThread =
-    selectedTaskLinkedThreadId ? (draftThreadsByThreadId[selectedTaskLinkedThreadId] ?? null) : null;
-  const selectedTaskLinkedServerThread =
-    selectedTaskLinkedThreadId ? (sidebarThreadsById[selectedTaskLinkedThreadId] ?? null) : null;
-  const selectedTaskLinkedThread =
-    selectedTaskLinkedDraftThread ??
-    (selectedTaskLinkedServerThread && selectedTaskLinkedServerThread.archivedAt === null
-      ? selectedTaskLinkedServerThread
-      : null);
-  const selectedTaskChatTitle = selectedTaskLinkedServerThread?.title ?? null;
-  const selectedTaskHasLinkedChat =
-    selectedTaskLinkedThreadId !== null && selectedTaskLinkedThread !== null;
+  const selectedTaskLinkedThreadRef = useMemo(() => {
+    if (!selectedTaskChatKey) {
+      return null;
+    }
+
+    const storedThreadKey = taskChatThreadIdsByTaskKey[selectedTaskChatKey];
+    return storedThreadKey ? parseScopedThreadKey(storedThreadKey) : null;
+  }, [selectedTaskChatKey, taskChatThreadIdsByTaskKey]);
+  const selectedTaskLinkedThread = useMemo(() => {
+    if (!selectedTaskLinkedThreadRef) {
+      return null;
+    }
+
+    return (
+      nilusProjectThreads.find(
+        (thread) =>
+          thread.environmentId === selectedTaskLinkedThreadRef.environmentId &&
+          thread.id === selectedTaskLinkedThreadRef.threadId &&
+          thread.archivedAt === null,
+      ) ?? null
+    );
+  }, [nilusProjectThreads, selectedTaskLinkedThreadRef]);
+  const selectedTaskChatTitle = selectedTaskLinkedThread?.title ?? null;
+  const selectedTaskHasLinkedChat = selectedTaskLinkedThread !== null;
   const saveState = useMemo(
     () =>
       resolveNilusSaveState({
@@ -708,30 +705,28 @@ function NilusRouteView() {
     }
   };
 
-  const resolveNilusTaskModelSelection = (): ModelSelection => {
-    const stickySelection =
-      stickyActiveProvider !== null ? stickyModelSelectionByProvider[stickyActiveProvider] : null;
-    if (stickySelection) {
-      return stickySelection;
+  const confirmNilusWrite = async (lines: string[]) => {
+    const api = readLocalApi();
+    if (!api) {
+      return true;
     }
-    if (nilusProject?.defaultModelSelection) {
-      return nilusProject.defaultModelSelection;
-    }
-    return {
-      provider: "codex",
-      model: DEFAULT_MODEL_BY_PROVIDER.codex,
-    };
+    return api.dialogs.confirm(lines.join("\n"));
   };
 
-  const ensureNilusProjectId = async (normalizedRepoRoot: string) => {
-    const api = readNativeApi();
-    if (!api) {
-      throw new Error("Native API is not available.");
+  const ensureNilusProjectRef = async (normalizedRepoRoot: string) => {
+    const environmentId = nilusProjectRef?.environmentId ?? primaryEnvironmentId;
+    if (!environmentId) {
+      throw new Error("No active environment is ready for Nilus chat.");
     }
 
-    let projectId = nilusProject?.id ?? null;
-    if (!projectId) {
-      projectId = newProjectId();
+    const api = readEnvironmentApi(environmentId);
+    if (!api) {
+      throw new Error("Environment API is not available.");
+    }
+
+    let projectRef = nilusProjectRef;
+    if (!projectRef) {
+      const projectId = newProjectId();
       const createdAt = new Date().toISOString();
       await api.orchestration.dispatchCommand({
         type: "project.create",
@@ -739,15 +734,17 @@ function NilusRouteView() {
         projectId,
         title: resolveProjectTitleFromRepoRoot(normalizedRepoRoot),
         workspaceRoot: normalizedRepoRoot,
+        createWorkspaceRootIfMissing: true,
         defaultModelSelection: {
           provider: "codex",
           model: DEFAULT_MODEL_BY_PROVIDER.codex,
         },
         createdAt,
       });
+      projectRef = scopeProjectRef(environmentId, projectId);
     }
 
-    return { api, projectId };
+    return { api, projectRef };
   };
 
   const handleOpenNilusChat = async () => {
@@ -758,30 +755,18 @@ function NilusRouteView() {
 
     setIsLaunchingChat(true);
     try {
-      const { projectId } = await ensureNilusProjectId(normalizedRepoRoot);
-
-      const storedDraftThread = useComposerDraftStore.getState().getDraftThreadByProjectId(projectId);
-      if (storedDraftThread) {
-        await handleNewThread(projectId, {
-          envMode: defaultThreadEnvMode,
-        });
-        return;
-      }
-
-      const latestThread = resolveLatestNilusChatThread({
-        projectId,
-        threadIdsByProjectId,
-        sidebarThreadsById,
-      });
-      if (latestThread) {
+      if (latestNilusChatThread) {
         await navigate({
-          to: "/$threadId",
-          params: { threadId: latestThread.id },
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(
+            scopeThreadRef(latestNilusChatThread.environmentId, latestNilusChatThread.id),
+          ),
         });
         return;
       }
 
-      await handleNewThread(projectId, {
+      const { projectRef } = await ensureNilusProjectRef(normalizedRepoRoot);
+      await handleNewThread(projectRef, {
         envMode: defaultThreadEnvMode,
       });
     } catch (error) {
@@ -806,15 +791,15 @@ function NilusRouteView() {
       return;
     }
 
-    if (selectedTaskLinkedThreadId && selectedTaskLinkedThread) {
+    if (selectedTaskLinkedThreadRef && selectedTaskLinkedThread) {
       await navigate({
-        to: "/$threadId",
-        params: { threadId: selectedTaskLinkedThreadId },
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(selectedTaskLinkedThreadRef),
       });
       return;
     }
 
-    if (selectedTaskChatKey && selectedTaskLinkedThreadId && !selectedTaskLinkedThread) {
+    if (selectedTaskChatKey && selectedTaskLinkedThreadRef && !selectedTaskLinkedThread) {
       setTaskChatThreadIdsByTaskKey((existing) => {
         const next = { ...existing };
         delete next[selectedTaskChatKey];
@@ -824,11 +809,15 @@ function NilusRouteView() {
 
     setStartingTaskNumber(selectedTask.number);
     try {
-      const { api, projectId } = await ensureNilusProjectId(normalizedRepoRoot);
+      const { api, projectRef } = await ensureNilusProjectRef(normalizedRepoRoot);
       const threadId = newThreadId();
+      const threadRef = scopeThreadRef(projectRef.environmentId, threadId);
       const messageId = newMessageId();
       const createdAt = new Date().toISOString();
-      const modelSelection = resolveNilusTaskModelSelection();
+      const modelSelection = nilusProject?.defaultModelSelection ?? {
+        provider: "codex",
+        model: DEFAULT_MODEL_BY_PROVIDER.codex,
+      };
       const title = buildNilusTaskThreadTitle(selectedTask);
 
       await api.orchestration.dispatchCommand({
@@ -847,7 +836,7 @@ function NilusRouteView() {
         interactionMode: DEFAULT_INTERACTION_MODE,
         bootstrap: {
           createThread: {
-            projectId,
+            projectId: projectRef.projectId,
             title,
             modelSelection,
             runtimeMode: DEFAULT_RUNTIME_MODE,
@@ -863,7 +852,7 @@ function NilusRouteView() {
       const taskChatKey = buildNilusTaskChatStorageKey(normalizedRepoRoot, selectedTask.number);
       setTaskChatThreadIdsByTaskKey((existing) => ({
         ...existing,
-        [taskChatKey]: threadId,
+        [taskChatKey]: scopedThreadKey(threadRef),
       }));
 
       toastManager.add({
@@ -873,8 +862,8 @@ function NilusRouteView() {
       });
 
       await navigate({
-        to: "/$threadId",
-        params: { threadId },
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
       });
     } catch (error) {
       toastManager.add({
@@ -1595,11 +1584,11 @@ function NilusRouteView() {
                           linkedTaskChatTitle={selectedTaskChatTitle}
                           onStartTask={() => void handleStartTaskChat()}
                           onOpenTaskChat={
-                            selectedTaskLinkedThreadId
+                            selectedTaskLinkedThreadRef && selectedTaskLinkedThread
                               ? () =>
                                   void navigate({
-                                    to: "/$threadId",
-                                    params: { threadId: selectedTaskLinkedThreadId },
+                                    to: "/$environmentId/$threadId",
+                                    params: buildThreadRouteParams(selectedTaskLinkedThreadRef),
                                   })
                               : null
                           }
@@ -1619,6 +1608,59 @@ function NilusRouteView() {
                           Select a task to inspect its continuity context.
                         </div>
                       )}
+                    </section>
+                  </div>
+                </div>
+              ) : null}
+
+              {page === "settings" ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
+                  <BackendSyncPanel
+                    serverConfig={serverConfig}
+                    gitStatus={gitStatus}
+                    onRefreshStatus={() => void refreshGitStatus(gitStatusTarget)}
+                  />
+
+                  <div className="space-y-4">
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <SettingsIcon className="size-4 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Nilus settings</h2>
+                          <p className="text-xs text-muted-foreground">
+                            Shared runtime and repo-health controls for the workspace
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                        <p>
+                          This route centralizes the browser-facing backend and sync state so
+                          Nilus does not repeat the same readiness panel across Evidence, Changes,
+                          and Chat.
+                        </p>
+                        <p>
+                          Use the global app settings when you need provider binaries, model
+                          defaults, or broader application preferences. Use this Nilus page when
+                          you want the current repo's backend readiness and sync state in one place.
+                        </p>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/settings" })}>
+                          Open app settings
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={goToChanges}>
+                          Back to changes
+                        </Button>
+                      </div>
+                    </section>
+
+                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
+                      <h2 className="text-sm font-semibold">Why this route exists</h2>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        Nilus remains workspace-first. Tasks, Memory, Evidence, Changes, and Chat
+                        should each focus on their own workflow instead of restating the same
+                        backend and sync context in every right rail.
+                      </p>
                     </section>
                   </div>
                 </div>
@@ -1837,6 +1879,11 @@ function NilusRouteView() {
                     </div>
                   </section>
 
+                  <BackendSyncPanel
+                    serverConfig={serverConfig}
+                    gitStatus={gitStatus}
+                    onRefreshStatus={() => void refreshGitStatus(gitStatusTarget)}
+                  />
                 </div>
               ) : null}
 
@@ -1864,59 +1911,11 @@ function NilusRouteView() {
                     </div>
                   </section>
 
-                </div>
-              ) : null}
-
-              {page === "settings" ? (
-                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
                   <BackendSyncPanel
                     serverConfig={serverConfig}
                     gitStatus={gitStatus}
-                    onRefreshStatus={() => void refreshGitStatus(repoRoot)}
+                    onRefreshStatus={() => void refreshGitStatus(gitStatusTarget)}
                   />
-
-                  <div className="space-y-4">
-                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                      <div className="flex items-center gap-2">
-                        <SettingsIcon className="size-4 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">Nilus settings</h2>
-                          <p className="text-xs text-muted-foreground">
-                            Shared runtime and repo-health controls for the workspace
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
-                        <p>
-                          This route centralizes the browser-facing backend and sync state so
-                          Nilus does not repeat the same readiness panel across Evidence, Changes,
-                          and Chat.
-                        </p>
-                        <p>
-                          Use the global app settings when you need provider binaries, model
-                          defaults, or broader application preferences. Use this Nilus page when
-                          you want the current repo's backend readiness and sync state in one place.
-                        </p>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/settings" })}>
-                          Open app settings
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={goToChanges}>
-                          Back to changes
-                        </Button>
-                      </div>
-                    </section>
-
-                    <section className="rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
-                      <h2 className="text-sm font-semibold">Why this route exists</h2>
-                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                        Nilus remains workspace-first. Tasks, Memory, Evidence, Changes, and Chat
-                        should each focus on their own workflow instead of restating the same
-                        backend and sync context in every right rail.
-                      </p>
-                    </section>
-                  </div>
                 </div>
               ) : null}
             </>

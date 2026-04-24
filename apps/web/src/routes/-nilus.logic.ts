@@ -1,4 +1,4 @@
-import type { NilusTaskRecord, ProjectId } from "@t3tools/contracts";
+import type { NilusTaskRecord } from "@t3tools/contracts";
 
 import type { Project, SidebarThreadSummary } from "../types";
 
@@ -91,21 +91,15 @@ export function resolveProjectTitleFromRepoRoot(repoRoot: string): string {
   return repoRoot.split(/[/\\]/).findLast((segment) => segment.length > 0) ?? repoRoot;
 }
 
-export function resolveLatestNilusChatThread(input: {
-  projectId: ProjectId;
-  threadIdsByProjectId: Record<string, ReadonlyArray<SidebarThreadSummary["id"]>>;
-  sidebarThreadsById: Record<string, SidebarThreadSummary>;
-}): SidebarThreadSummary | null {
-  const projectThreads = (input.threadIdsByProjectId[input.projectId] ?? [])
-    .map((threadId) => input.sidebarThreadsById[threadId])
-    .filter((thread): thread is SidebarThreadSummary => thread !== undefined)
-    .filter((thread) => thread.archivedAt === null);
-
-  if (projectThreads.length === 0) {
+export function resolveLatestNilusChatThread(
+  threads: readonly SidebarThreadSummary[],
+): SidebarThreadSummary | null {
+  const activeThreads = threads.filter((thread) => thread.archivedAt === null);
+  if (activeThreads.length === 0) {
     return null;
   }
 
-  return [...projectThreads].sort((left, right) => {
+  return [...activeThreads].sort((left, right) => {
     const leftTimestamp = left.latestUserMessageAt ?? left.updatedAt ?? left.createdAt;
     const rightTimestamp = right.latestUserMessageAt ?? right.updatedAt ?? right.createdAt;
     return rightTimestamp.localeCompare(leftTimestamp);
