@@ -2,7 +2,13 @@ import { Schema } from "effect";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
-import { OpenError, OpenInEditorInput } from "./editor";
+import { OpenError, OpenInEditorInput } from "./editor.ts";
+import { AuthAccessStreamEvent } from "./auth.ts";
+import {
+  FilesystemBrowseInput,
+  FilesystemBrowseResult,
+  FilesystemBrowseError,
+} from "./filesystem.ts";
 import {
   GitActionProgressEvent,
   GitCheckoutInput,
@@ -27,23 +33,21 @@ import {
   GitStatusInput,
   GitStatusResult,
   GitStatusStreamEvent,
-} from "./git";
-import { KeybindingsConfigError } from "./keybindings";
+} from "./git.ts";
+import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ClientOrchestrationCommand,
-  OrchestrationEvent,
   ORCHESTRATION_WS_METHODS,
   OrchestrationDispatchCommandError,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetSnapshotError,
-  OrchestrationGetSnapshotInput,
   OrchestrationGetTurnDiffError,
   OrchestrationGetTurnDiffInput,
   OrchestrationReplayEventsError,
   OrchestrationReplayEventsInput,
   OrchestrationRpcSchemas,
-} from "./orchestration";
+} from "./orchestration.ts";
 import {
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
@@ -51,7 +55,38 @@ import {
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
-} from "./project";
+} from "./project.ts";
+import {
+  NilusCreateTaskInput,
+  NilusCreateTaskResult,
+  NilusIssueDraftInput,
+  NilusIssueUpdateInput,
+  NilusMemoryMutationPreview,
+  NilusMemoryMutationResult,
+  NilusPartnerDraftInput,
+  NilusPartnerUpdateInput,
+  NilusCreateTalkNoteInput,
+  NilusCreateTalkNoteResult,
+  NilusCompleteTaskInput,
+  NilusCompleteTaskResult,
+  NilusDocument,
+  NilusListDomainEntriesInput,
+  NilusListDomainEntriesResult,
+  NilusListTasksInput,
+  NilusPrepareTaskCompletionInput,
+  NilusReadDocumentInput,
+  NilusReadError,
+  NilusStartupSnapshot,
+  NilusStartupSnapshotInput,
+  NilusTaskDraftInput,
+  NilusTaskDraftPreview,
+  NilusTaskCompletionPreview,
+  NilusTaskContext,
+  NilusTaskContextInput,
+  NilusTaskRecord,
+  NilusTalkNoteDraftInput,
+  NilusTalkNotePreview,
+} from "./nilus.ts";
 import {
   NilusCreateTaskInput,
   NilusCreateTaskResult,
@@ -93,7 +128,7 @@ import {
   TerminalRestartInput,
   TerminalSessionSnapshot,
   TerminalWriteInput,
-} from "./terminal";
+} from "./terminal.ts";
 import {
   ServerConfigStreamEvent,
   ServerConfig,
@@ -101,8 +136,8 @@ import {
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
-} from "./server";
-import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings";
+} from "./server.ts";
+import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -134,6 +169,9 @@ export const WS_METHODS = {
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
+  // Filesystem methods
+  filesystemBrowse: "filesystem.browse",
+
   // Git methods
   gitPull: "git.pull",
   gitRefreshStatus: "git.refreshStatus",
@@ -164,10 +202,10 @@ export const WS_METHODS = {
 
   // Streaming subscriptions
   subscribeGitStatus: "subscribeGitStatus",
-  subscribeOrchestrationDomainEvents: "subscribeOrchestrationDomainEvents",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeServerConfig: "subscribeServerConfig",
   subscribeServerLifecycle: "subscribeServerLifecycle",
+  subscribeAuthAccess: "subscribeAuthAccess",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -330,6 +368,12 @@ export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   error: OpenError,
 });
 
+export const WsFilesystemBrowseRpc = Rpc.make(WS_METHODS.filesystemBrowse, {
+  payload: FilesystemBrowseInput,
+  success: FilesystemBrowseResult,
+  error: FilesystemBrowseError,
+});
+
 export const WsSubscribeGitStatusRpc = Rpc.make(WS_METHODS.subscribeGitStatus, {
   payload: GitStatusInput,
   success: GitStatusStreamEvent,
@@ -434,12 +478,6 @@ export const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, {
   error: TerminalError,
 });
 
-export const WsOrchestrationGetSnapshotRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getSnapshot, {
-  payload: OrchestrationGetSnapshotInput,
-  success: OrchestrationRpcSchemas.getSnapshot.output,
-  error: OrchestrationGetSnapshotError,
-});
-
 export const WsOrchestrationDispatchCommandRpc = Rpc.make(
   ORCHESTRATION_WS_METHODS.dispatchCommand,
   {
@@ -470,11 +508,19 @@ export const WsOrchestrationReplayEventsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.
   error: OrchestrationReplayEventsError,
 });
 
-export const WsSubscribeOrchestrationDomainEventsRpc = Rpc.make(
-  WS_METHODS.subscribeOrchestrationDomainEvents,
+export const WsOrchestrationSubscribeShellRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subscribeShell, {
+  payload: OrchestrationRpcSchemas.subscribeShell.input,
+  success: OrchestrationRpcSchemas.subscribeShell.output,
+  error: OrchestrationGetSnapshotError,
+  stream: true,
+});
+
+export const WsOrchestrationSubscribeThreadRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.subscribeThread,
   {
-    payload: Schema.Struct({}),
-    success: OrchestrationEvent,
+    payload: OrchestrationRpcSchemas.subscribeThread.input,
+    success: OrchestrationRpcSchemas.subscribeThread.output,
+    error: OrchestrationGetSnapshotError,
     stream: true,
   },
 );
@@ -495,6 +541,12 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
 export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecycle, {
   payload: Schema.Struct({}),
   success: ServerLifecycleStreamEvent,
+  stream: true,
+});
+
+export const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess, {
+  payload: Schema.Struct({}),
+  success: AuthAccessStreamEvent,
   stream: true,
 });
 
@@ -526,6 +578,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsNilusPrepareIssueUpdateRpc,
   WsNilusUpdateIssueRpc,
   WsShellOpenInEditorRpc,
+  WsFilesystemBrowseRpc,
   WsSubscribeGitStatusRpc,
   WsGitPullRpc,
   WsGitRefreshStatusRpc,
@@ -544,13 +597,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsTerminalClearRpc,
   WsTerminalRestartRpc,
   WsTerminalCloseRpc,
-  WsSubscribeOrchestrationDomainEventsRpc,
   WsSubscribeTerminalEventsRpc,
   WsSubscribeServerConfigRpc,
   WsSubscribeServerLifecycleRpc,
-  WsOrchestrationGetSnapshotRpc,
+  WsSubscribeAuthAccessRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
   WsOrchestrationReplayEventsRpc,
+  WsOrchestrationSubscribeShellRpc,
+  WsOrchestrationSubscribeThreadRpc,
 );

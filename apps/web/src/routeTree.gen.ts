@@ -10,16 +10,31 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PairRouteImport } from './routes/pair'
 import { Route as NilusRouteImport } from './routes/nilus'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
+import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
-import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
+import { Route as NilusTasksRouteImport } from './routes/nilus.tasks'
+import { Route as NilusSettingsRouteImport } from './routes/nilus.settings'
+import { Route as NilusMemoryRouteImport } from './routes/nilus.memory'
+import { Route as NilusEvidenceRouteImport } from './routes/nilus.evidence'
+import { Route as NilusChatRouteImport } from './routes/nilus.chat'
+import { Route as NilusChangesRouteImport } from './routes/nilus.changes'
+import { Route as ChatLandingRouteImport } from './routes/chat.landing'
+import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
+import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NilusRoute = NilusRouteImport.update({
@@ -41,75 +56,183 @@ const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   path: '/general',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
+  id: '/connections',
+  path: '/connections',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   id: '/archived',
   path: '/archived',
   getParentRoute: () => SettingsRoute,
 } as any)
-const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
+const NilusTasksRoute = NilusTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => NilusRoute,
+} as any)
+const NilusSettingsRoute = NilusSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => NilusRoute,
+} as any)
+const NilusMemoryRoute = NilusMemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => NilusRoute,
+} as any)
+const NilusEvidenceRoute = NilusEvidenceRouteImport.update({
+  id: '/evidence',
+  path: '/evidence',
+  getParentRoute: () => NilusRoute,
+} as any)
+const NilusChatRoute = NilusChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => NilusRoute,
+} as any)
+const NilusChangesRoute = NilusChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
+  getParentRoute: () => NilusRoute,
+} as any)
+const ChatLandingRoute = ChatLandingRouteImport.update({
+  id: '/chat/landing',
+  path: '/chat/landing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
+  id: '/draft/$draftId',
+  path: '/draft/$draftId',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatEnvironmentIdThreadIdRoute =
+  ChatEnvironmentIdThreadIdRouteImport.update({
+    id: '/$environmentId/$threadId',
+    path: '/$environmentId/$threadId',
+    getParentRoute: () => ChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
-  '/nilus': typeof NilusRoute
+  '/nilus': typeof NilusRouteWithChildren
+  '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/$threadId': typeof ChatThreadIdRoute
+  '/chat/landing': typeof ChatLandingRoute
+  '/nilus/changes': typeof NilusChangesRoute
+  '/nilus/chat': typeof NilusChatRoute
+  '/nilus/evidence': typeof NilusEvidenceRoute
+  '/nilus/memory': typeof NilusMemoryRoute
+  '/nilus/settings': typeof NilusSettingsRoute
+  '/nilus/tasks': typeof NilusTasksRoute
   '/settings/archived': typeof SettingsArchivedRoute
+  '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/general': typeof SettingsGeneralRoute
+  '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
+  '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
 export interface FileRoutesByTo {
-  '/nilus': typeof NilusRoute
+  '/nilus': typeof NilusRouteWithChildren
+  '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/$threadId': typeof ChatThreadIdRoute
+  '/chat/landing': typeof ChatLandingRoute
+  '/nilus/changes': typeof NilusChangesRoute
+  '/nilus/chat': typeof NilusChatRoute
+  '/nilus/evidence': typeof NilusEvidenceRoute
+  '/nilus/memory': typeof NilusMemoryRoute
+  '/nilus/settings': typeof NilusSettingsRoute
+  '/nilus/tasks': typeof NilusTasksRoute
   '/settings/archived': typeof SettingsArchivedRoute
+  '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/': typeof ChatIndexRoute
+  '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
+  '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
-  '/nilus': typeof NilusRoute
+  '/nilus': typeof NilusRouteWithChildren
+  '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/_chat/$threadId': typeof ChatThreadIdRoute
+  '/chat/landing': typeof ChatLandingRoute
+  '/nilus/changes': typeof NilusChangesRoute
+  '/nilus/chat': typeof NilusChatRoute
+  '/nilus/evidence': typeof NilusEvidenceRoute
+  '/nilus/memory': typeof NilusMemoryRoute
+  '/nilus/settings': typeof NilusSettingsRoute
+  '/nilus/tasks': typeof NilusTasksRoute
   '/settings/archived': typeof SettingsArchivedRoute
+  '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/_chat/': typeof ChatIndexRoute
+  '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
+  '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/nilus'
+    | '/pair'
     | '/settings'
-    | '/$threadId'
+    | '/chat/landing'
+    | '/nilus/changes'
+    | '/nilus/chat'
+    | '/nilus/evidence'
+    | '/nilus/memory'
+    | '/nilus/settings'
+    | '/nilus/tasks'
     | '/settings/archived'
+    | '/settings/connections'
     | '/settings/general'
+    | '/$environmentId/$threadId'
+    | '/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/nilus'
+    | '/pair'
     | '/settings'
-    | '/$threadId'
+    | '/chat/landing'
+    | '/nilus/changes'
+    | '/nilus/chat'
+    | '/nilus/evidence'
+    | '/nilus/memory'
+    | '/nilus/settings'
+    | '/nilus/tasks'
     | '/settings/archived'
+    | '/settings/connections'
     | '/settings/general'
     | '/'
+    | '/$environmentId/$threadId'
+    | '/draft/$draftId'
   id:
     | '__root__'
     | '/_chat'
     | '/nilus'
+    | '/pair'
     | '/settings'
-    | '/_chat/$threadId'
+    | '/chat/landing'
+    | '/nilus/changes'
+    | '/nilus/chat'
+    | '/nilus/evidence'
+    | '/nilus/memory'
+    | '/nilus/settings'
+    | '/nilus/tasks'
     | '/settings/archived'
+    | '/settings/connections'
     | '/settings/general'
     | '/_chat/'
+    | '/_chat/$environmentId/$threadId'
+    | '/_chat/draft/$draftId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
-  NilusRoute: typeof NilusRoute
+  NilusRoute: typeof NilusRouteWithChildren
+  PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  ChatLandingRoute: typeof ChatLandingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -119,6 +242,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/nilus': {
@@ -149,6 +279,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsGeneralRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/connections': {
+      id: '/settings/connections'
+      path: '/connections'
+      fullPath: '/settings/connections'
+      preLoaderRoute: typeof SettingsConnectionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/archived': {
       id: '/settings/archived'
       path: '/archived'
@@ -156,35 +293,115 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsArchivedRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/_chat/$threadId': {
-      id: '/_chat/$threadId'
-      path: '/$threadId'
-      fullPath: '/$threadId'
-      preLoaderRoute: typeof ChatThreadIdRouteImport
+    '/nilus/tasks': {
+      id: '/nilus/tasks'
+      path: '/tasks'
+      fullPath: '/nilus/tasks'
+      preLoaderRoute: typeof NilusTasksRouteImport
+      parentRoute: typeof NilusRoute
+    }
+    '/nilus/settings': {
+      id: '/nilus/settings'
+      path: '/settings'
+      fullPath: '/nilus/settings'
+      preLoaderRoute: typeof NilusSettingsRouteImport
+      parentRoute: typeof NilusRoute
+    }
+    '/nilus/memory': {
+      id: '/nilus/memory'
+      path: '/memory'
+      fullPath: '/nilus/memory'
+      preLoaderRoute: typeof NilusMemoryRouteImport
+      parentRoute: typeof NilusRoute
+    }
+    '/nilus/evidence': {
+      id: '/nilus/evidence'
+      path: '/evidence'
+      fullPath: '/nilus/evidence'
+      preLoaderRoute: typeof NilusEvidenceRouteImport
+      parentRoute: typeof NilusRoute
+    }
+    '/nilus/chat': {
+      id: '/nilus/chat'
+      path: '/chat'
+      fullPath: '/nilus/chat'
+      preLoaderRoute: typeof NilusChatRouteImport
+      parentRoute: typeof NilusRoute
+    }
+    '/nilus/changes': {
+      id: '/nilus/changes'
+      path: '/changes'
+      fullPath: '/nilus/changes'
+      preLoaderRoute: typeof NilusChangesRouteImport
+      parentRoute: typeof NilusRoute
+    }
+    '/chat/landing': {
+      id: '/chat/landing'
+      path: '/chat/landing'
+      fullPath: '/chat/landing'
+      preLoaderRoute: typeof ChatLandingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_chat/draft/$draftId': {
+      id: '/_chat/draft/$draftId'
+      path: '/draft/$draftId'
+      fullPath: '/draft/$draftId'
+      preLoaderRoute: typeof ChatDraftDraftIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/$environmentId/$threadId': {
+      id: '/_chat/$environmentId/$threadId'
+      path: '/$environmentId/$threadId'
+      fullPath: '/$environmentId/$threadId'
+      preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
   }
 }
 
 interface ChatRouteChildren {
-  ChatThreadIdRoute: typeof ChatThreadIdRoute
   ChatIndexRoute: typeof ChatIndexRoute
+  ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
+  ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
-  ChatThreadIdRoute: ChatThreadIdRoute,
   ChatIndexRoute: ChatIndexRoute,
+  ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
+  ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
+interface NilusRouteChildren {
+  NilusChangesRoute: typeof NilusChangesRoute
+  NilusChatRoute: typeof NilusChatRoute
+  NilusEvidenceRoute: typeof NilusEvidenceRoute
+  NilusMemoryRoute: typeof NilusMemoryRoute
+  NilusSettingsRoute: typeof NilusSettingsRoute
+  NilusTasksRoute: typeof NilusTasksRoute
+}
+
+const NilusRouteChildren: NilusRouteChildren = {
+  NilusChangesRoute: NilusChangesRoute,
+  NilusChatRoute: NilusChatRoute,
+  NilusEvidenceRoute: NilusEvidenceRoute,
+  NilusMemoryRoute: NilusMemoryRoute,
+  NilusSettingsRoute: NilusSettingsRoute,
+  NilusTasksRoute: NilusTasksRoute,
+}
+
+const NilusRouteWithChildren = NilusRoute._addFileChildren(NilusRouteChildren)
+
 interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
+  SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsArchivedRoute: SettingsArchivedRoute,
+  SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
 }
 
@@ -194,8 +411,10 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
-  NilusRoute: NilusRoute,
+  NilusRoute: NilusRouteWithChildren,
+  PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  ChatLandingRoute: ChatLandingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

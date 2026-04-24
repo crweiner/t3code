@@ -15,7 +15,8 @@ import type {
 } from "@t3tools/contracts";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 
-import { ensureNativeApi } from "~/nativeApi";
+import { createEnvironmentApi } from "~/environmentApi";
+import { getPrimaryEnvironmentConnection } from "~/environments/runtime";
 
 const EMPTY_TASKS: readonly NilusTaskRecord[] = [];
 const EMPTY_DOMAIN_ENTRIES: NilusListDomainEntriesResult = {
@@ -23,6 +24,10 @@ const EMPTY_DOMAIN_ENTRIES: NilusListDomainEntriesResult = {
   entries: [],
 };
 const STARTUP_STALE_TIME = 15_000;
+
+function readNilusApi() {
+  return createEnvironmentApi(getPrimaryEnvironmentConnection().client).nilus;
+}
 
 export const nilusQueryKeys = {
   all: ["nilus"] as const,
@@ -52,9 +57,11 @@ export const nilusQueryKeys = {
 };
 
 export const nilusMutationKeys = {
-  completeTask: (repoRoot: string | null) => ["nilus", "mutation", "completeTask", repoRoot] as const,
+  completeTask: (repoRoot: string | null) =>
+    ["nilus", "mutation", "completeTask", repoRoot] as const,
   createTask: (repoRoot: string | null) => ["nilus", "mutation", "createTask", repoRoot] as const,
-  createTalkNote: (repoRoot: string | null) => ["nilus", "mutation", "createTalkNote", repoRoot] as const,
+  createTalkNote: (repoRoot: string | null) =>
+    ["nilus", "mutation", "createTalkNote", repoRoot] as const,
   createPartner: (repoRoot: string | null) => ["nilus", "mutation", "createPartner", repoRoot] as const,
   updatePartner: (repoRoot: string | null) => ["nilus", "mutation", "updatePartner", repoRoot] as const,
   createIssue: (repoRoot: string | null) => ["nilus", "mutation", "createIssue", repoRoot] as const,
@@ -90,11 +97,11 @@ export function nilusStartupSnapshotQueryOptions(input: {
   return queryOptions({
     queryKey: nilusQueryKeys.startup(input.repoRoot),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus repo is not selected.");
       }
-      return api.nilus.getStartupSnapshot({
+      return api.getStartupSnapshot({
         repoRoot: input.repoRoot,
       });
     },
@@ -112,11 +119,11 @@ export function nilusTasksQueryOptions(input: {
   return queryOptions({
     queryKey: nilusQueryKeys.tasks(input.repoRoot, input.status),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus repo is not selected.");
       }
-      return api.nilus.listTasks({
+      return api.listTasks({
         repoRoot: input.repoRoot,
         ...(input.status ? { status: input.status } : {}),
         ...(input.limit ? { limit: input.limit } : {}),
@@ -137,11 +144,11 @@ export function nilusDomainEntriesQueryOptions(input: {
   return queryOptions({
     queryKey: nilusQueryKeys.domainEntries(input.repoRoot, input.domain),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot || !input.domain) {
         throw new Error("Nilus domain browsing is unavailable.");
       }
-      return api.nilus.listDomainEntries({
+      return api.listDomainEntries({
         repoRoot: input.repoRoot,
         domain: input.domain,
         ...(input.limit ? { limit: input.limit } : {}),
@@ -162,11 +169,11 @@ export function nilusTaskContextQueryOptions(input: {
   return queryOptions({
     queryKey: nilusQueryKeys.taskContext(input.repoRoot, input.taskNumber),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot || input.taskNumber === null) {
         throw new Error("Nilus task context is unavailable.");
       }
-      return api.nilus.getTaskContext({
+      return api.getTaskContext({
         repoRoot: input.repoRoot,
         taskNumber: input.taskNumber,
       });
@@ -184,11 +191,11 @@ export function nilusDocumentQueryOptions(input: {
   return queryOptions({
     queryKey: nilusQueryKeys.document(input.repoRoot, input.path),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot || !input.path) {
         throw new Error("Nilus document is not selected.");
       }
-      return api.nilus.readDocument({
+      return api.readDocument({
         repoRoot: input.repoRoot,
         path: input.path,
       });
@@ -206,11 +213,11 @@ export function nilusTaskCompletionPreviewQueryOptions(input: {
   return queryOptions({
     queryKey: nilusQueryKeys.completionPreview(input.repoRoot, input.taskNumber),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot || input.taskNumber === null) {
         throw new Error("Nilus task completion preview is unavailable.");
       }
-      return api.nilus.prepareTaskCompletion({
+      return api.prepareTaskCompletion({
         repoRoot: input.repoRoot,
         taskNumber: input.taskNumber,
       });
@@ -225,14 +232,17 @@ export function nilusTalkNotePreviewQueryOptions(input: {
   enabled?: boolean;
 }) {
   return queryOptions({
-    queryKey: nilusQueryKeys.talkNotePreview(input.draft?.repoRoot ?? null, input.draft?.draftKey ?? "empty"),
+    queryKey: nilusQueryKeys.talkNotePreview(
+      input.draft?.repoRoot ?? null,
+      input.draft?.draftKey ?? "empty",
+    ),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.draft) {
         throw new Error("Nilus talk note preview is unavailable.");
       }
       const { draftKey: _draftKey, ...payload } = input.draft;
-      return api.nilus.prepareTalkNote(payload);
+      return api.prepareTalkNote(payload);
     },
     enabled: (input.enabled ?? true) && input.draft !== null,
     staleTime: STARTUP_STALE_TIME,
@@ -249,12 +259,12 @@ export function nilusTaskDraftPreviewQueryOptions(input: {
       input.draft?.draftKey ?? "empty",
     ),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.draft) {
         throw new Error("Nilus task preview is unavailable.");
       }
       const { draftKey: _draftKey, ...payload } = input.draft;
-      return api.nilus.prepareTaskDraft(payload);
+      return api.prepareTaskDraft(payload);
     },
     enabled: (input.enabled ?? true) && input.draft !== null,
     staleTime: STARTUP_STALE_TIME,
@@ -271,12 +281,12 @@ export function nilusPartnerDraftPreviewQueryOptions(input: {
       input.draft?.draftKey ?? "empty",
     ),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.draft) {
         throw new Error("Nilus partner draft preview is unavailable.");
       }
       const { draftKey: _draftKey, ...payload } = input.draft;
-      return api.nilus.preparePartnerDraft(payload);
+      return api.preparePartnerDraft(payload);
     },
     enabled: (input.enabled ?? true) && input.draft !== null,
     staleTime: STARTUP_STALE_TIME,
@@ -293,12 +303,12 @@ export function nilusPartnerUpdatePreviewQueryOptions(input: {
       input.draft?.draftKey ?? "empty",
     ),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.draft) {
         throw new Error("Nilus partner update preview is unavailable.");
       }
       const { draftKey: _draftKey, ...payload } = input.draft;
-      return api.nilus.preparePartnerUpdate(payload);
+      return api.preparePartnerUpdate(payload);
     },
     enabled: (input.enabled ?? true) && input.draft !== null,
     staleTime: STARTUP_STALE_TIME,
@@ -315,12 +325,12 @@ export function nilusIssueDraftPreviewQueryOptions(input: {
       input.draft?.draftKey ?? "empty",
     ),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.draft) {
         throw new Error("Nilus issue draft preview is unavailable.");
       }
       const { draftKey: _draftKey, ...payload } = input.draft;
-      return api.nilus.prepareIssueDraft(payload);
+      return api.prepareIssueDraft(payload);
     },
     enabled: (input.enabled ?? true) && input.draft !== null,
     staleTime: STARTUP_STALE_TIME,
@@ -337,12 +347,12 @@ export function nilusIssueUpdatePreviewQueryOptions(input: {
       input.draft?.draftKey ?? "empty",
     ),
     queryFn: async () => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.draft) {
         throw new Error("Nilus issue update preview is unavailable.");
       }
       const { draftKey: _draftKey, ...payload } = input.draft;
-      return api.nilus.prepareIssueUpdate(payload);
+      return api.prepareIssueUpdate(payload);
     },
     enabled: (input.enabled ?? true) && input.draft !== null,
     staleTime: STARTUP_STALE_TIME,
@@ -356,11 +366,11 @@ export function nilusCompleteTaskMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.completeTask(input.repoRoot),
     mutationFn: async ({ taskNumber }: { taskNumber: number }) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus task completion is unavailable.");
       }
-      return api.nilus.completeTask({
+      return api.completeTask({
         repoRoot: input.repoRoot,
         taskNumber,
       });
@@ -378,11 +388,11 @@ export function nilusCreateTalkNoteMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.createTalkNote(input.repoRoot),
     mutationFn: async (draft: NilusTalkNoteDraftInput) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus talk note creation is unavailable.");
       }
-      return api.nilus.createTalkNote(draft);
+      return api.createTalkNote(draft);
     },
     onSuccess: async (_result: NilusCreateTalkNoteResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
@@ -397,11 +407,11 @@ export function nilusCreateTaskMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.createTask(input.repoRoot),
     mutationFn: async (draft: NilusTaskDraftInput) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus task creation is unavailable.");
       }
-      return api.nilus.createTask(draft);
+      return api.createTask(draft);
     },
     onSuccess: async (_result: NilusCreateTaskResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
@@ -416,11 +426,11 @@ export function nilusCreatePartnerMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.createPartner(input.repoRoot),
     mutationFn: async (draft: NilusPartnerDraftInput) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus partner creation is unavailable.");
       }
-      return api.nilus.createPartner(draft);
+      return api.createPartner(draft);
     },
     onSuccess: async (_result: NilusMemoryMutationResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
@@ -435,11 +445,11 @@ export function nilusUpdatePartnerMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.updatePartner(input.repoRoot),
     mutationFn: async (draft: NilusPartnerUpdateInput) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus partner update is unavailable.");
       }
-      return api.nilus.updatePartner(draft);
+      return api.updatePartner(draft);
     },
     onSuccess: async (_result: NilusMemoryMutationResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
@@ -454,11 +464,11 @@ export function nilusCreateIssueMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.createIssue(input.repoRoot),
     mutationFn: async (draft: NilusIssueDraftInput) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus issue creation is unavailable.");
       }
-      return api.nilus.createIssue(draft);
+      return api.createIssue(draft);
     },
     onSuccess: async (_result: NilusMemoryMutationResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
@@ -473,11 +483,11 @@ export function nilusUpdateIssueMutationOptions(input: {
   return mutationOptions({
     mutationKey: nilusMutationKeys.updateIssue(input.repoRoot),
     mutationFn: async (draft: NilusIssueUpdateInput) => {
-      const api = ensureNativeApi();
+      const api = readNilusApi();
       if (!input.repoRoot) {
         throw new Error("Nilus issue update is unavailable.");
       }
-      return api.nilus.updateIssue(draft);
+      return api.updateIssue(draft);
     },
     onSuccess: async (_result: NilusMemoryMutationResult) => {
       await invalidateNilusQueries(input.queryClient, input.repoRoot);
